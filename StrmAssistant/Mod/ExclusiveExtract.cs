@@ -6,9 +6,11 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Services;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -42,8 +44,7 @@ namespace StrmAssistant.Mod
         private static MethodInfo _isSaverEnabledForItem;
         private static MethodInfo _afterMetadataRefresh;
         private static MethodInfo _runFfProcess;
-        private static PropertyInfo _standardOutput;
-        private static PropertyInfo _standardError;
+        private static MethodInfo _getInputArgument;
 
         private static MethodInfo _addVirtualFolder;
         private static MethodInfo _removeVirtualFolder;
@@ -92,10 +93,9 @@ namespace StrmAssistant.Mod
                 mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Probing.MediaProbeManager");
             _runFfProcess =
                 mediaProbeManager.GetMethod("RunFfProcess", BindingFlags.Instance | BindingFlags.NonPublic);
-            var processRunAssembly = Assembly.Load("Emby.ProcessRun");
-            var processResult = processRunAssembly.GetType("Emby.ProcessRun.Common.ProcessResult");
-            _standardOutput = processResult.GetProperty("StandardOutput");
-            _standardError = processResult.GetProperty("StandardError");
+            var encodingHelpers = mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Encoder.EncodingHelpers");
+            _getInputArgument =
+                encodingHelpers.GetMethod("GetInputArgument", BindingFlags.Static | BindingFlags.Public);
 
             var embyApi = Assembly.Load("Emby.Api");
             var libraryStructureService = embyApi.GetType("Emby.Api.Library.LibraryStructureService");
@@ -143,6 +143,7 @@ namespace StrmAssistant.Mod
         {
             PatchUnpatch(PatchTracker, true, _runFfProcess, prefix: nameof(RunFfProcessPrefix),
                 postfix: nameof(RunFfProcessPostfix));
+            PatchUnpatch(PatchTracker, true, _getInputArgument, prefix: nameof(GetInputArgumentPrefix));
         }
 
         public static void AllowExtractInstance(BaseItem item)
@@ -166,35 +167,45 @@ namespace StrmAssistant.Mod
             }
         }
 
-        [HarmonyPostfix]
-        private static void RunFfProcessPostfix(ref object __result)
+        [HarmonyPrefix]
+        private static bool GetInputArgumentPrefix(string input, MediaProtocol protocol, ref string __result)
         {
-            if (__result is Task task)
+            if (protocol == MediaProtocol.Http)
             {
-                var result = task.GetType().GetProperty("Result")?.GetValue(task);
+                __result = string.Format(CultureInfo.InvariantCulture, "\"{0}\"", input);
+                return false;
+            }
 
-                if (result != null)
+            return true;
+        }
+
+        [HarmonyPostfix]
+        private static void RunFfProcessPostfix(Task __result)
+        {
+            var result = Traverse.Create(__result).Property("Result").GetValue();
+
+            if (result != null)
+            {
+                var traverseResult = Traverse.Create(result);
+                var standardOutput = traverseResult.Property("StandardOutput").GetValue().ToString();
+                var standardError = traverseResult.Property("StandardError").GetValue().ToString();
+
+                if (standardOutput != null && standardError != null)
                 {
-                    var standardOutput = _standardOutput.GetValue(result) as string;
-                    var standardError = _standardError.GetValue(result) as string;
+                    var partialOutput = standardOutput.Length > 20
+                        ? standardOutput.Substring(0, 20)
+                        : standardOutput;
 
-                    if (standardOutput != null && standardError != null)
+                    if (Regex.Replace(partialOutput, @"\s+", "") == "{}")
                     {
-                        var partialOutput = standardOutput.Length > 20
-                            ? standardOutput.Substring(0, 20)
-                            : standardOutput;
+                        var lines = standardError.Split(new[] { '\r', '\n' },
+                            StringSplitOptions.RemoveEmptyEntries);
 
-                        if (Regex.Replace(partialOutput, @"\s+", "") == "{}")
+                        if (lines.Length > 0)
                         {
-                            var lines = standardError.Split(new[] { '\r', '\n' },
-                                StringSplitOptions.RemoveEmptyEntries);
+                            var errorMessage = lines[lines.Length - 1].Trim();
 
-                            if (lines.Length > 0)
-                            {
-                                var errorMessage = lines[lines.Length - 1].Trim();
-
-                                Plugin.Instance.Logger.Error("MediaInfoExtract - FfProbe Error: " + errorMessage);
-                            }
+                            Plugin.Instance.Logger.Error("MediaInfoExtract - FfProbe Error: " + errorMessage);
                         }
                     }
                 }
