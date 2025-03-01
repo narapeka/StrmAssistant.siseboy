@@ -23,19 +23,6 @@ namespace StrmAssistant.Mod
         private static MethodInfo _findEpisode;
         private static MethodInfo _getEpisodeData;
 
-        private static PropertyInfo _seasonName;
-        private static PropertyInfo _episodeName;
-        private static PropertyInfo _episodeOverview;
-        private static PropertyInfo _translationName;
-        private static PropertyInfo _translationOverview;
-        private static PropertyInfo _translationLanguage;
-        private static PropertyInfo _translationIsPrimary;
-        private static PropertyInfo _translationIsAlias;
-
-        private static PropertyInfo _tvdbSeasonTaskResultProperty;
-        private static PropertyInfo _tvdbEpisodeTaskResultProperty;
-        private static PropertyInfo _tvdbEpisodeTupleItem1Property;
-
         private static readonly ThreadLocal<bool?> ConsiderJapanese = new ThreadLocal<bool?>();
 
         public ChineseTvdb()
@@ -60,12 +47,6 @@ namespace StrmAssistant.Mod
                 var translations = _tvdbAssembly.GetType("Tvdb.Translations");
                 _getTranslation =
                     translations.GetMethod("GetTranslation", BindingFlags.Instance | BindingFlags.NonPublic);
-                var nameTranslation = _tvdbAssembly.GetType("Tvdb.NameTranslation");
-                _translationName = nameTranslation.GetProperty("name");
-                _translationOverview = nameTranslation.GetProperty("overview");
-                _translationLanguage = nameTranslation.GetProperty("language");
-                _translationIsPrimary = nameTranslation.GetProperty("IsPrimary");
-                _translationIsAlias = nameTranslation.GetProperty("isAlias");
                 var tvdbMovieProvider = _tvdbAssembly.GetType("Tvdb.TvdbMovieProvider");
                 _addMovieInfo = tvdbMovieProvider.GetMethod("AddMovieInfo",
                     BindingFlags.Instance | BindingFlags.NonPublic);
@@ -75,16 +56,11 @@ namespace StrmAssistant.Mod
                 var tvdbSeasonProvider= _tvdbAssembly.GetType("Tvdb.TvdbSeasonProvider");
                 _getTvdbSeason =
                     tvdbSeasonProvider.GetMethod("GetTvdbSeason", BindingFlags.Instance | BindingFlags.Public);
-                var tvdbSeason = _tvdbAssembly.GetType("Tvdb.TvdbSeason");
-                _seasonName = tvdbSeason.GetProperty("name");
                 var tvdbEpisodeProvider = _tvdbAssembly.GetType("Tvdb.TvdbEpisodeProvider");
                 _findEpisode = tvdbEpisodeProvider.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
                     .FirstOrDefault(m => m.Name == "FindEpisode" && m.GetParameters().Length == 3);
                 _getEpisodeData =
                     tvdbEpisodeProvider.GetMethod("GetEpisodeData", BindingFlags.Instance | BindingFlags.Public);
-                var tvdbEpisode = _tvdbAssembly.GetType("Tvdb.TvdbEpisode");
-                _episodeName = tvdbEpisode.GetProperty("name");
-                _episodeOverview = tvdbEpisode.GetProperty("overview");
             }
             else
             {
@@ -147,19 +123,17 @@ namespace StrmAssistant.Mod
                 if (field == 0)
                 {
                     translations.RemoveAll(t =>
-                    {
-                        var isAliasValue = _translationIsAlias?.GetValue(t)?.ToString();
-                        var isAlias = !string.IsNullOrEmpty(isAliasValue) ? bool.Parse(isAliasValue) : (bool?)null;
-                        return isAlias is true;
-                    });
+                        t != null && bool.TryParse(Traverse.Create(t).Property("isAlias")?.GetValue()?.ToString(),
+                            out var isAlias) && isAlias);
                 }
 
                 if (HasTvdbJapaneseFallback())
                 {
-                    var considerJapanese = translations.Any(t =>
+                    var considerJapanese = translations.Where(t => t != null).Any(t =>
                     {
-                        var language = _translationLanguage?.GetValue(t)?.ToString();
-                        var isPrimary = _translationIsPrimary?.GetValue(t) as bool?;
+                        var tran = Traverse.Create(t);
+                        var language = tran.Property("language")?.GetValue()?.ToString();
+                        var isPrimary = tran.Property("IsPrimary")?.GetValue() as bool?;
 
                         return language == "jpn" && isPrimary is true;
                     });
@@ -173,13 +147,17 @@ namespace StrmAssistant.Mod
                     var trans = translations;
                     Array.Sort(tvdbLanguages, (lang1, lang2) =>
                     {
-                        var translation1 =
-                            trans.FirstOrDefault(t => _translationLanguage.GetValue(t)?.ToString() == lang1);
-                        var translation2 =
-                            trans.FirstOrDefault(t => _translationLanguage.GetValue(t)?.ToString() == lang2);
+                        if (lang1 is null && lang2 is null) return 0;
+                        if (lang1 is null) return 1;
+                        if (lang2 is null) return -1;
 
-                        var name1 = translation1 != null ? _translationName.GetValue(translation1) as string : null;
-                        var name2 = translation2 != null ? _translationName.GetValue(translation2) as string : null;
+                        var tran1 = trans.FirstOrDefault(t =>
+                            Traverse.Create(t).Property("language")?.GetValue()?.ToString() == lang1);
+                        var tran2 = trans.FirstOrDefault(t =>
+                            Traverse.Create(t).Property("language")?.GetValue()?.ToString() == lang2);
+
+                        var name1 = Traverse.Create(tran1)?.Property("name")?.GetValue()?.ToString();
+                        var name2 = Traverse.Create(tran2)?.Property("name")?.GetValue()?.ToString();
 
                         var cn1 = cnLanguages.Contains(lang1);
                         var cn2 = cnLanguages.Contains(lang2);
@@ -203,8 +181,11 @@ namespace StrmAssistant.Mod
 
                 translations.Sort((t1, t2) =>
                 {
-                    var language1 = _translationLanguage?.GetValue(t1)?.ToString();
-                    var language2 = _translationLanguage?.GetValue(t2)?.ToString();
+                    if (t1 is null) return 1;
+                    if (t2 is null) return -1;
+
+                    var language1 = Traverse.Create(t1).Property("language")?.GetValue()?.ToString();
+                    var language2 = Traverse.Create(t2).Property("language")?.GetValue()?.ToString();
 
                     var index1 = languageOrder.GetValueOrDefault(language1, int.MaxValue);
                     var index2 = languageOrder.GetValueOrDefault(language2, int.MaxValue);
@@ -244,44 +225,51 @@ namespace StrmAssistant.Mod
         {
             if (__result != null && !defaultToFirst)
             {
-                var name = _translationName.GetValue(__result) as string;
+                var traverseResult = Traverse.Create(__result);
+                var nameProperty = traverseResult.Property("name");
+                var overviewProperty = traverseResult.Property("overview");
 
-                switch (field)
+                if (nameProperty != null && overviewProperty != null)
                 {
-                    case 0:
+                    var name = nameProperty.GetValue()?.ToString();
+
+                    switch (field)
                     {
-                        if (IsChinese(name))
+                        case 0:
                         {
-                            _translationName.SetValue(__result, ConvertTraditionalToSimplified(name));
-                        }
-                        else if (BlockTvdbNonFallbackLanguage(name))
-                        {
-                            _translationName.SetValue(__result, null);
-                        }
+                            if (IsChinese(name))
+                            {
+                                nameProperty.SetValue(ConvertTraditionalToSimplified(name));
+                            }
+                            else if (BlockTvdbNonFallbackLanguage(name))
+                            {
+                                nameProperty.SetValue(null);
+                            }
 
-                        break;
-                    }
-                    case 1:
-                    {
-                        var overview = _translationOverview.GetValue(__result) as string;
-
-                        if (IsChinese(overview))
-                        {
-                            overview = ConvertTraditionalToSimplified(overview);
-                            _translationOverview.SetValue(__result, overview);
+                            break;
                         }
-                        else if (BlockTvdbNonFallbackLanguage(overview))
+                        case 1:
                         {
-                            overview = null;
-                            _translationOverview.SetValue(__result, null);
-                        }
+                            var overview = overviewProperty.GetValue()?.ToString();
 
-                        if (string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(overview))
-                        {
-                            _translationName.SetValue(__result, overview);
-                        }
+                            if (IsChinese(overview))
+                            {
+                                overview = ConvertTraditionalToSimplified(overview);
+                                overviewProperty.SetValue(overview);
+                            }
+                            else if (BlockTvdbNonFallbackLanguage(overview))
+                            {
+                                overview = null;
+                                overviewProperty.SetValue(null);
+                            }
 
-                        break;
+                            if (string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(overview))
+                            {
+                                nameProperty.SetValue(overview);
+                            }
+
+                            break;
+                        }
                     }
                 }
             }
@@ -291,22 +279,25 @@ namespace StrmAssistant.Mod
         private static void GetTvdbSeasonPostfix(SeasonInfo id, IDirectoryService directoryService,
             CancellationToken cancellationToken, Task __result)
         {
-            if (_tvdbSeasonTaskResultProperty == null)
-                _tvdbSeasonTaskResultProperty = __result.GetType().GetProperty("Result");
-
-            var tvdbSeason = _tvdbSeasonTaskResultProperty?.GetValue(__result);
+            var tvdbSeason = Traverse.Create(__result).Property("Result")?.GetValue();
 
             if (tvdbSeason != null)
             {
-                var name = _seasonName.GetValue(tvdbSeason) as string;
+                var nameProperty = Traverse.Create(tvdbSeason).Property("name");
 
-                if (IsChinese(name))
+                if (nameProperty != null)
                 {
-                    _seasonName.SetValue(tvdbSeason, ConvertTraditionalToSimplified(name));
-                }
-                else if (id.IndexNumber.HasValue && (string.IsNullOrEmpty(name) || BlockTvdbNonFallbackLanguage(name)))
-                {
-                    _seasonName.SetValue(tvdbSeason, $"第 {id.IndexNumber} 季");
+                    var name = nameProperty.GetValue()?.ToString();
+
+                    if (IsChinese(name))
+                    {
+                        nameProperty.SetValue(ConvertTraditionalToSimplified(name));
+                    }
+                    else if (id.IndexNumber.HasValue &&
+                             (string.IsNullOrEmpty(name) || BlockTvdbNonFallbackLanguage(name)))
+                    {
+                        nameProperty.SetValue($"第 {id.IndexNumber} 季");
+                    }
                 }
             }
         }
@@ -315,23 +306,30 @@ namespace StrmAssistant.Mod
         private static void FindEpisodePostfix(object data, EpisodeInfo searchInfo, int? seasonNumber,
             ref object __result)
         {
-            if (_episodeName != null && _episodeOverview != null && __result != null)
+            if (__result != null)
             {
-                var name = _episodeName.GetValue(__result) as string;
-                var overview = _episodeOverview.GetValue(__result) as string;
+                var traverseResult = Traverse.Create(__result);
+                var nameProperty = traverseResult.Property("name");
+                var overviewProperty = traverseResult.Property("overview");
 
-                var considerJapanese = HasTvdbJapaneseFallback() && (IsJapanese(name) || IsJapanese(overview));
-                ConsiderJapanese.Value = considerJapanese;
+                if (nameProperty != null && overviewProperty != null)
+                {
+                    var name = nameProperty.GetValue()?.ToString();
+                    var overview = overviewProperty.GetValue()?.ToString();
 
-                if (!considerJapanese)
-                {
-                    if (!IsChinese(name)) _episodeName.SetValue(__result, null);
-                    if (!IsChinese(overview)) _episodeOverview.SetValue(__result, null);
-                }
-                else
-                {
-                    if (!IsChineseJapanese(name)) _episodeName.SetValue(__result, null);
-                    if (!IsChineseJapanese(overview)) _episodeOverview.SetValue(__result, null);
+                    var considerJapanese = HasTvdbJapaneseFallback() && (IsJapanese(name) || IsJapanese(overview));
+                    ConsiderJapanese.Value = considerJapanese;
+
+                    if (!considerJapanese)
+                    {
+                        if (!IsChinese(name)) nameProperty.SetValue(null);
+                        if (!IsChinese(overview)) overviewProperty.SetValue(null);
+                    }
+                    else
+                    {
+                        if (!IsChineseJapanese(name)) nameProperty.SetValue(null);
+                        if (!IsChineseJapanese(overview)) overviewProperty.SetValue(null);
+                    }
                 }
             }
         }
@@ -340,38 +338,38 @@ namespace StrmAssistant.Mod
         private static void GetEpisodeDataPostfix(EpisodeInfo searchInfo, bool fillExtendedInfo,
             IDirectoryService directoryService, CancellationToken cancellationToken, Task __result)
         {
-            if (_tvdbEpisodeTaskResultProperty == null)
-                _tvdbEpisodeTaskResultProperty = __result.GetType().GetProperty("Result");
-
-            var result = _tvdbEpisodeTaskResultProperty?.GetValue(__result);
-
-            if (_tvdbEpisodeTupleItem1Property == null)
-                _tvdbEpisodeTupleItem1Property = result?.GetType().GetProperty("Item1");
-
-            var tvdbEpisode = _tvdbEpisodeTupleItem1Property?.GetValue(result);
+            var taskResult = Traverse.Create(__result).Property("Result")?.GetValue();
+            var tvdbEpisode = Traverse.Create(taskResult)?.Property("Item1")?.GetValue();
 
             if (tvdbEpisode != null)
             {
-                var name = _episodeName.GetValue(tvdbEpisode) as string;
-                var overview = _episodeOverview.GetValue(tvdbEpisode) as string;
+                var traverseTvdbEpisode = Traverse.Create(tvdbEpisode);
+                var nameProperty = traverseTvdbEpisode.Property("name");
+                var overviewProperty = traverseTvdbEpisode.Property("overview");
 
-                if (IsChinese(name))
+                if (nameProperty != null && overviewProperty != null)
                 {
-                    _episodeName.SetValue(tvdbEpisode, ConvertTraditionalToSimplified(name));
-                }
-                else if (searchInfo.IndexNumber.HasValue &&
-                         (string.IsNullOrEmpty(name) || BlockTvdbNonFallbackLanguage(name)))
-                {
-                    _episodeName.SetValue(tvdbEpisode, $"第 {searchInfo.IndexNumber} 集");
-                }
+                    var name = nameProperty.GetValue()?.ToString();
+                    var overview = overviewProperty.GetValue()?.ToString();
 
-                if (IsChinese(overview))
-                {
-                    _episodeOverview.SetValue(tvdbEpisode, ConvertTraditionalToSimplified(overview));
-                }
-                else if (BlockTvdbNonFallbackLanguage(overview))
-                {
-                    _episodeOverview.SetValue(tvdbEpisode, null);
+                    if (IsChinese(name))
+                    {
+                        nameProperty.SetValue(ConvertTraditionalToSimplified(name));
+                    }
+                    else if (searchInfo.IndexNumber.HasValue &&
+                             (string.IsNullOrEmpty(name) || BlockTvdbNonFallbackLanguage(name)))
+                    {
+                        nameProperty.SetValue($"第 {searchInfo.IndexNumber} 集");
+                    }
+
+                    if (IsChinese(overview))
+                    {
+                        overviewProperty.SetValue(ConvertTraditionalToSimplified(overview));
+                    }
+                    else if (BlockTvdbNonFallbackLanguage(overview))
+                    {
+                        overviewProperty.SetValue(null);
+                    }
                 }
             }
         }
