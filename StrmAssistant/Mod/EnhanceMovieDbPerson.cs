@@ -22,22 +22,9 @@ namespace StrmAssistant.Mod
         private static Assembly _movieDbAssembly;
 
         private static MethodInfo _movieDbPersonProviderImportData;
-        private static PropertyInfo _nameProperty;
-        private static PropertyInfo _alsoKnownAsProperty;
-        private static PropertyInfo _biographyProperty;
-        private static PropertyInfo _placeOfBirthProperty;
-
         private static MethodInfo _movieDbSeasonProviderImportData;
         private static MethodInfo _seasonGetMetadata;
-
-        private static PropertyInfo _seasonCreditsProperty;
-        private static PropertyInfo _castListProperty;
-
-        private static PropertyInfo _castIdProperty;
-        private static PropertyInfo _castOrderProperty;
-        private static PropertyInfo _castNameProperty;
-        private static PropertyInfo _castCharacterProperty;
-        private static PropertyInfo _castProfilePathProperty;
+        private static MethodInfo _addPerson;
 
         private static readonly ConcurrentDictionary<Season, List<PersonInfo>> SeasonPersonInfoDictionary =
             new ConcurrentDictionary<Season, List<PersonInfo>>();
@@ -63,11 +50,6 @@ namespace StrmAssistant.Mod
                 var movieDbPersonProvider = _movieDbAssembly.GetType("MovieDb.MovieDbPersonProvider");
                 _movieDbPersonProviderImportData = movieDbPersonProvider.GetMethod("ImportData",
                     BindingFlags.NonPublic | BindingFlags.Instance);
-                var personResult = movieDbPersonProvider.GetNestedType("PersonResult", BindingFlags.Public);
-                _nameProperty = personResult.GetProperty("name");
-                _alsoKnownAsProperty = personResult.GetProperty("also_known_as");
-                _biographyProperty = personResult.GetProperty("biography");
-                _placeOfBirthProperty = personResult.GetProperty("place_of_birth");
 
                 var movieDbSeasonProvider = _movieDbAssembly.GetType("MovieDb.MovieDbSeasonProvider");
                 _movieDbSeasonProviderImportData =
@@ -75,18 +57,7 @@ namespace StrmAssistant.Mod
                 _seasonGetMetadata = movieDbSeasonProvider.GetMethod("GetMetadata",
                     BindingFlags.Public | BindingFlags.Instance, null,
                     new[] { typeof(RemoteMetadataFetchOptions<SeasonInfo>), typeof(CancellationToken) }, null);
-                var seasonRootObject = movieDbSeasonProvider.GetNestedType("SeasonRootObject", BindingFlags.Public);
-                _seasonCreditsProperty = seasonRootObject.GetProperty("credits");
-
-                var tmdbCredits = _movieDbAssembly.GetType("MovieDb.TmdbCredits");
-                _castListProperty = tmdbCredits.GetProperty("cast");
-
-                var tmdbCast = _movieDbAssembly.GetType("MovieDb.TmdbCast");
-                _castIdProperty = tmdbCast.GetProperty("id");
-                _castOrderProperty = tmdbCast.GetProperty("order");
-                _castNameProperty = tmdbCast.GetProperty("name");
-                _castCharacterProperty = tmdbCast.GetProperty("character");
-                _castProfilePathProperty = tmdbCast.GetProperty("profile_path");
+                _addPerson = typeof(PeopleHelper).GetMethod("AddPerson", BindingFlags.Static | BindingFlags.Public);
             }
             else
             {
@@ -102,14 +73,15 @@ namespace StrmAssistant.Mod
             PatchUnpatch(PatchTracker, apply, _movieDbSeasonProviderImportData,
                 prefix: nameof(SeasonImportDataPrefix));
             PatchUnpatch(PatchTracker, apply, _seasonGetMetadata, postfix: nameof(SeasonGetMetadataPostfix));
+            PatchUnpatch(PatchTracker, apply, _addPerson, prefix: nameof(AddPersonPrefix));
         }
 
         private static Tuple<string, bool> ProcessPersonInfoAsExpected(string input, string placeOfBirth)
         {
             var isJapaneseFallback = HasMovieDbJapaneseFallback();
 
-            var considerJapanese = isJapaneseFallback && placeOfBirth != null &&
-                                   placeOfBirth.IndexOf("Japan", StringComparison.Ordinal) >= 0;
+            var considerJapanese = isJapaneseFallback && !string.IsNullOrEmpty(placeOfBirth) &&
+                                   placeOfBirth.Contains("Japan", StringComparison.Ordinal);
 
             if (IsChinese(input))
             {
@@ -129,46 +101,56 @@ namespace StrmAssistant.Mod
         {
             if (!RefreshPersonTask.IsRunning) return true;
 
-            var placeOfBirth = _placeOfBirthProperty?.GetValue(info) as string;
+            var nameProperty = Traverse.Create(info).Property("name");
+            var name = nameProperty.GetValue<string>();
+            var placeOfBirthProperty = Traverse.Create(info).Property("place_of_birth");
+            var placeOfBirth = placeOfBirthProperty.GetValue<string>();
 
-            if (_nameProperty?.GetValue(info) is string infoPersonName)
+            if (!string.IsNullOrEmpty(name))
             {
-                var updateNameResult = ProcessPersonInfoAsExpected(infoPersonName, placeOfBirth);
+                var updateNameResult = ProcessPersonInfoAsExpected(name, placeOfBirth);
 
                 if (updateNameResult.Item2)
                 {
-                    if (!string.Equals(infoPersonName, CleanPersonName(updateNameResult.Item1),
+                    if (!string.Equals(name, CleanPersonName(updateNameResult.Item1),
                             StringComparison.Ordinal))
-                        _nameProperty.SetValue(info, updateNameResult.Item1);
+                        nameProperty.SetValue(updateNameResult.Item1);
                 }
                 else
                 {
-                    if (_alsoKnownAsProperty?.GetValue(info) is List<object> alsoKnownAsList)
+                    var alsoKnownAsList = Traverse.Create(info)
+                        .Property("also_known_as")
+                        .GetValue<List<object>>()
+                        ?.OfType<string>()
+                        .Where(alias => !string.IsNullOrEmpty(alias))
+                        .ToList();
+
+                    if (alsoKnownAsList?.Any() == true)
                     {
                         foreach (var alias in alsoKnownAsList)
                         {
-                            if (alias is string aliasString && !string.IsNullOrEmpty(aliasString))
+                            var updateAliasResult = ProcessPersonInfoAsExpected(alias, placeOfBirth);
+                            if (updateAliasResult.Item2)
                             {
-                                var updateAliasResult = ProcessPersonInfoAsExpected(aliasString, placeOfBirth);
-                                if (updateAliasResult.Item2)
-                                {
-                                    _nameProperty.SetValue(info, updateAliasResult.Item1);
-                                    break;
-                                }
+                                nameProperty.SetValue(updateAliasResult.Item1);
+                                break;
                             }
                         }
                     }
                 }
             }
 
-            if (_biographyProperty?.GetValue(info) is string infoBiography)
+            var biographyProperty = Traverse.Create(info).Property("biography");
+            var biography =biographyProperty.GetValue<string>();
+
+            if (!string.IsNullOrEmpty(biography))
             {
-                var updateBiographyResult = ProcessPersonInfoAsExpected(infoBiography, placeOfBirth);
+                var updateBiographyResult = ProcessPersonInfoAsExpected(biography, placeOfBirth);
 
                 if (updateBiographyResult.Item2)
                 {
-                    if (!string.Equals(infoBiography, updateBiographyResult.Item1, StringComparison.Ordinal))
-                        _biographyProperty.SetValue(info, updateBiographyResult.Item1);
+                    if (!string.Equals(biography, updateBiographyResult.Item1, StringComparison.Ordinal))
+                        biographyProperty.SetValue(updateBiographyResult.Item1);
                 }
             }
 
@@ -181,9 +163,11 @@ namespace StrmAssistant.Mod
         {
             if (isFirstLanguage)
             {
-                var cast =
-                    (_castListProperty.GetValue(_seasonCreditsProperty.GetValue(seasonInfo)) as IEnumerable<object>)
-                    ?.OrderBy(a => (int)_castOrderProperty.GetValue(a));
+                var cast = Traverse.Create(seasonInfo)
+                    .Property("credits")
+                    .Property("cast")
+                    .GetValue<IEnumerable<object>>()
+                    ?.OrderBy(c => Traverse.Create(c).Property("order").GetValue<int>());
 
                 if (cast != null)
                 {
@@ -191,10 +175,11 @@ namespace StrmAssistant.Mod
 
                     foreach (var actor in cast)
                     {
-                        var id = (int)_castIdProperty.GetValue(actor);
-                        var actorName = ((string)_castNameProperty.GetValue(actor)).Trim();
-                        var character = ((string)_castCharacterProperty.GetValue(actor)).Trim();
-                        var profilePath = (string)_castProfilePathProperty.GetValue(actor);
+                        var traverseActor = Traverse.Create(actor);
+                        var id = traverseActor.Property("id").GetValue<int>();
+                        var actorName = traverseActor.Property("name").GetValue<string>().Trim();
+                        var character = traverseActor.Property("character").GetValue<string>().Trim();
+                        var profilePath = traverseActor.Property("profile_path").GetValue<string>();
 
                         var personInfo = new PersonInfo { Name = actorName, Role = character, Type = PersonType.Actor };
 
@@ -222,25 +207,37 @@ namespace StrmAssistant.Mod
         private static void SeasonGetMetadataPostfix(RemoteMetadataFetchOptions<SeasonInfo> options,
             CancellationToken cancellationToken, Task<MetadataResult<Season>> __result)
         {
-            __result.ContinueWith(task =>
+            MetadataResult<Season> result = null;
+
+            try
+            {
+                result = __result?.Result;
+            }
+            catch
+            {
+                // ignored
+            }
+
+            if (result?.Item != null && SeasonPersonInfoDictionary.TryGetValue(result.Item, out var personInfoList))
+            {
+                foreach (var personInfo in personInfoList)
                 {
-                    if (task.IsCompletedSuccessfully)
-                    {
-                        var result = task.Result;
+                    result.AddPerson(personInfo);
+                }
 
-                        if (result.Item != null &&
-                            SeasonPersonInfoDictionary.TryGetValue(result.Item, out var personInfoList))
-                        {
-                            foreach (var personInfo in personInfoList)
-                            {
-                                result.AddPerson(personInfo);
-                            }
+                SeasonPersonInfoDictionary.TryRemove(result.Item, out _);
+            }
+        }
 
-                            SeasonPersonInfoDictionary.TryRemove(result.Item, out _);
-                        }
-                    }
-                }, cancellationToken, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default)
-                .ConfigureAwait(false);
+        [HarmonyPrefix]
+        private static bool AddPersonPrefix(List<PersonInfo> people, PersonInfo person)
+        {
+            if (string.IsNullOrWhiteSpace(person.Name))
+            {
+                return false;
+            }
+
+            return true;
         }
     }
 }
