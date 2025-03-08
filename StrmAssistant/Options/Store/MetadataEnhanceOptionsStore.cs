@@ -54,8 +54,6 @@ namespace StrmAssistant.Options.Store
                             .Where(l => languages.Contains(l, StringComparer.OrdinalIgnoreCase)));
                 }
 
-                options.ShowBlockNonFallbackLanguage = options.ChineseMovieDb || options.ChineseTvdb;
-
                 options.AltMovieDbApiUrl =
                     !string.IsNullOrWhiteSpace(options.AltMovieDbApiUrl)
                         ? options.AltMovieDbApiUrl.Trim().TrimEnd('/')

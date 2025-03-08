@@ -39,6 +39,7 @@ namespace StrmAssistant.Options
         [EditMultilSelect]
         [SelectItemsSource(nameof(LanguageList))]
         [VisibleCondition(nameof(ChineseMovieDb), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         public string FallbackLanguages { get; set; } = "zh-sg";
 
         [DisplayNameL("MetadataEnhanceOptions_ChineseTvdb_Customize_Tvdb_Fallback_Language", typeof(Resources))]
@@ -55,6 +56,7 @@ namespace StrmAssistant.Options
         [EditMultilSelect]
         [SelectItemsSource(nameof(TvdbLanguageList))]
         [VisibleCondition(nameof(ChineseTvdb), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsTvdbPluginLoaded), SimpleCondition.IsTrue)]
         public string TvdbFallbackLanguages { get; set; } = "zhtw,yue";
 
         [DisplayNameL("MetadataEnhanceOptions_BlockNonFallbackLanguage_Block_Non_Fallback_Language", typeof(Resources))]
@@ -64,7 +66,8 @@ namespace StrmAssistant.Options
         public bool BlockNonFallbackLanguage { get; set; } = false;
 
         [Browsable(false)]
-        public bool ShowBlockNonFallbackLanguage { get; set; } = false;
+        public bool ShowBlockNonFallbackLanguage =>
+            ChineseMovieDb && IsMovieDbPluginLoaded || ChineseTvdb && IsTvdbPluginLoaded;
 
         [DisplayNameL("MetadataEnhanceOptions_MovieDbEpisodeGroup_Support_MovieDb_Episode_Group", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_MovieDbEpisodeGroup_Support_MovieDb_episode_group_scrapping_for_TV_shows__Default_is_OFF_", typeof(Resources))]
@@ -75,6 +78,7 @@ namespace StrmAssistant.Options
         [DisplayNameL("MetadataEnhanceOptions_LocalEpisodeGroup_Local_Episode_Group", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_LocalEpisodeGroup_Store_or_load_episode_group_info_to_from_JSON_file__Default_is_OFF_", typeof(Resources))]
         [VisibleCondition(nameof(MovieDbEpisodeGroup), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         public bool LocalEpisodeGroup { get; set; } = false;
 
         [DisplayNameL("MetadataEnhanceOptions_EnhanceMovieDbPerson_Enhance_MovieDb_Person", typeof(Resources))]
@@ -112,16 +116,19 @@ namespace StrmAssistant.Options
         [DisplayNameL("MetadataEnhanceOptions_AltMovieDbApiUrl_Alternative_MovieDb_Api_Url", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_AltMovieDbApiUrl_Default_alternative_is_https___api_tmdb_org", typeof(Resources))]
         [VisibleCondition(nameof(AltMovieDbConfig), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         public string AltMovieDbApiUrl { get; set; } = "https://api.tmdb.org";
 
         [DisplayNameL("MetadataEnhanceOptions_AltMovieDbImageUrl_Alternative_MovieDb_Image_Url", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_AltMovieDbImageUrl_No_default_alternative__Provide_by_yourself_", typeof(Resources))]
         [VisibleCondition(nameof(AltMovieDbConfig), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         public string AltMovieDbImageUrl { get; set; } = string.Empty;
 
         [DisplayNameL("MetadataEnhanceOptions_AltMovieDbApiKey_Alternative_MovieDb_Api_Key", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_AltMovieDbApiKey_Provide_your_own_MovieDb_Api_Key__Blank_uses_system_default_", typeof(Resources))]
         [VisibleCondition(nameof(AltMovieDbConfig), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         public string AltMovieDbApiKey { get; set; } = string.Empty;
 
         [Browsable(false)]
@@ -131,7 +138,7 @@ namespace StrmAssistant.Options
 
         [Browsable(false)]
         public bool IsTvdbPluginLoaded =>
-            ChineseTvdb || AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "Tvdb") &&
+            AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "Tvdb") &&
             RuntimeInformation.ProcessArchitecture == Architecture.X64;
 
         [Browsable(false)]
@@ -167,8 +174,6 @@ namespace StrmAssistant.Options
                     IsEnabled = true
                 });
             }
-
-            ShowBlockNonFallbackLanguage = ChineseMovieDb || ChineseTvdb;
         }
 
         protected override void Validate(ValidationContext context)

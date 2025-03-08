@@ -97,6 +97,7 @@ namespace StrmAssistant.Mod
             {
                 Plugin.Instance.Logger.Info("AltMovieDbConfig - MovieDb plugin is not installed");
                 PatchTracker.FallbackPatchApproach = PatchApproach.None;
+                PatchTracker.IsSupported = false;
             }
         }
 

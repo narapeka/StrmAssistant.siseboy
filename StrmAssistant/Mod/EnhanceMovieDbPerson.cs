@@ -63,6 +63,7 @@ namespace StrmAssistant.Mod
             {
                 Plugin.Instance.Logger.Info("EnhanceMovieDbPerson - MovieDb plugin is not installed");
                 PatchTracker.FallbackPatchApproach = PatchApproach.None;
+                PatchTracker.IsSupported = false;
             }
         }
 
