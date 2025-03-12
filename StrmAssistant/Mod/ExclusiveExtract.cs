@@ -438,7 +438,7 @@ namespace StrmAssistant.Mod
         }
 
         [HarmonyPrefix]
-        private static bool AfterMetadataRefreshPrefix(BaseItem __instance)
+        private static void AfterMetadataRefreshPrefix(BaseItem __instance)
         {
             if (CurrentRefreshContext.Value != null && CurrentRefreshContext.Value.InternalId == __instance.InternalId)
             {
@@ -450,49 +450,30 @@ namespace StrmAssistant.Mod
                     Plugin.LibraryApi.UpdateDateModifiedLastSaved(__instance, directoryService);
                 }
 
-                if (CurrentRefreshContext.Value.IsPersistInScope)
+                if (CurrentRefreshContext.Value.IsPersistInScope && CurrentRefreshContext.Value.MediaInfoUpdated)
                 {
-                    
-                    if (CurrentRefreshContext.Value.MediaInfoUpdated)
+                    if (__instance.IsShortcut && !refreshOptions.EnableRemoteContentProbe)
                     {
-                        if (__instance.IsShortcut && !refreshOptions.EnableRemoteContentProbe)
-                        {
-                            if (!CurrentRefreshContext.Value.IsFileChanged)
-                            {
-                                _ = Plugin.MediaInfoApi.DeserializeMediaInfo(__instance, directoryService,
-                                    "Exclusive Restore").ConfigureAwait(false);
-                            }
-                            else if (!IsExclusiveFeatureSelected(ExclusiveControl.IgnoreFileChange))
-                            {
-                                Plugin.MediaInfoApi.DeleteMediaInfoJson(__instance, directoryService,
-                                    "Exclusive Delete on Change");
-                            }
-                        }
-                        else
-                        {
-                            _ = Plugin.MediaInfoApi.SerializeMediaInfo(__instance.InternalId, directoryService, true,
-                                "Exclusive Overwrite").ConfigureAwait(false);
-                        }
-                    }
-                    else if (!CurrentRefreshContext.Value.IsNewItem)
-                    {
-                        if (!Plugin.LibraryApi.HasMediaInfo(__instance))
+                        if (!CurrentRefreshContext.Value.IsFileChanged)
                         {
                             _ = Plugin.MediaInfoApi.DeserializeMediaInfo(__instance, directoryService,
                                 "Exclusive Restore").ConfigureAwait(false);
                         }
-                        else
+                        else if (!IsExclusiveFeatureSelected(ExclusiveControl.IgnoreFileChange))
                         {
-                            _ = Plugin.MediaInfoApi.SerializeMediaInfo(__instance.InternalId, directoryService, false,
-                                "Exclusive Non-existent").ConfigureAwait(false);
+                            Plugin.MediaInfoApi.DeleteMediaInfoJson(__instance, directoryService,
+                                "Exclusive Delete on Change");
                         }
+                    }
+                    else
+                    {
+                        _ = Plugin.MediaInfoApi.SerializeMediaInfo(__instance.InternalId, directoryService, true,
+                            "Exclusive Overwrite").ConfigureAwait(false);
                     }
                 }
             }
 
             CurrentRefreshContext.Value = null;
-
-            return true;
         }
 
         [HarmonyPrefix]

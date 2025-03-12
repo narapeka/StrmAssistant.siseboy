@@ -158,11 +158,30 @@ namespace StrmAssistant
 
         private void OnRefreshCompleted(object sender, GenericEventArgs<RefreshProgressInfo> e)
         {
+            var item = e.Argument.Item;
+
+            if (MediaInfoExtractStore.GetOptions().PersistMediaInfo && (item is Video || item is Audio) &&
+                item.DateLastRefreshed != DateTimeOffset.MinValue)
+            {
+                var directoryService = new DirectoryService(Logger, _fileSystem);
+
+                if (!LibraryApi.HasMediaInfo(item))
+                {
+                    _ = MediaInfoApi.DeserializeMediaInfo(item, directoryService, "OnRefreshCompleted Restore")
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    _ = MediaInfoApi.SerializeMediaInfo(item.InternalId, directoryService, false,
+                        "OnRefreshCompleted Non-existent").ConfigureAwait(false);
+                }
+            }
+
             if (_libraryManager.IsScanRunning) return;
 
             var options = ExperienceEnhanceStore.GetOptions();
 
-            if (options.MergeMultiVersion && e.Argument.Item.IsTopParent)
+            if (options.MergeMultiVersion && item.IsTopParent)
             {
                 var library = e.Argument.CollectionFolders.OfType<CollectionFolder>().FirstOrDefault();
 
@@ -232,12 +251,12 @@ namespace StrmAssistant
                         if (!deserializeResult)
                         {
                             deserializeResult = await MediaInfoApi.DeserializeMediaInfo(e.Item, directoryService,
-                                "Item Added Event").ConfigureAwait(false);
+                                "OnItemAdded Restore").ConfigureAwait(false);
                         }
                         else
                         {
                             _ = MediaInfoApi.SerializeMediaInfo(e.Item.InternalId, directoryService, true,
-                                "Item Added Event").ConfigureAwait(false);
+                                "OnItemAdded Overwrite").ConfigureAwait(false);
                         }
                     }
 
