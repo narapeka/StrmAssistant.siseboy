@@ -1,3 +1,4 @@
+using Emby.Media.Model.ProbeModel;
 using HarmonyLib;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
@@ -45,6 +46,7 @@ namespace StrmAssistant.Mod
         private static MethodInfo _afterMetadataRefresh;
         private static MethodInfo _runFfProcess;
         private static MethodInfo _getInputArgument;
+        private static MethodInfo _getMediaInfo;
 
         private static MethodInfo _addVirtualFolder;
         private static MethodInfo _removeVirtualFolder;
@@ -95,6 +97,10 @@ namespace StrmAssistant.Mod
             var encodingHelpers = mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Encoder.EncodingHelpers");
             _getInputArgument =
                 encodingHelpers.GetMethod("GetInputArgument", BindingFlags.Static | BindingFlags.Public);
+            var probeResultNormalizer =
+                mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Probing.ProbeResultNormalizer");
+            _getMediaInfo =
+                probeResultNormalizer.GetMethod("GetMediaInfo", BindingFlags.Instance | BindingFlags.Public);
 
             var embyApi = Assembly.Load("Emby.Api");
             var libraryStructureService = embyApi.GetType("Emby.Api.Library.LibraryStructureService");
@@ -143,6 +149,7 @@ namespace StrmAssistant.Mod
             PatchUnpatch(PatchTracker, true, _runFfProcess, prefix: nameof(RunFfProcessPrefix),
                 finalizer: nameof(RunFfProcessFinalizer));
             PatchUnpatch(PatchTracker, true, _getInputArgument, prefix: nameof(GetInputArgumentPrefix));
+            PatchUnpatch(PatchTracker, true, _getMediaInfo, postfix: nameof(GetMediaInfoPostfix));
         }
 
         public static void AllowExtractInstance(BaseItem item)
@@ -176,6 +183,20 @@ namespace StrmAssistant.Mod
             }
 
             return true;
+        }
+
+        [HarmonyPostfix]
+        private static void GetMediaInfoPostfix(ProbeResult data, bool isAudio, string path, MediaProtocol protocol,
+            MediaInfo __result)
+        {
+            if (isAudio) return;
+
+            __result.Album = null;
+            __result.AlbumArtists = Array.Empty<string>();
+            __result.AlbumTags = Array.Empty<string>();
+            __result.Artists = Array.Empty<string>();
+            __result.Genres = Array.Empty<string>();
+            __result.MediaStreams = __result.MediaStreams.Where(ms => ms.Type != MediaStreamType.EmbeddedImage).ToList();
         }
 
         [HarmonyFinalizer]
