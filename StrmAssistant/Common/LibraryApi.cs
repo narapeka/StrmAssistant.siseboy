@@ -483,11 +483,14 @@ namespace StrmAssistant.Common
             if (item.PremiereDate.HasValue && item.PremiereDate.Value != DateTimeOffset.MinValue)
                 return item.PremiereDate.Value;
 
-            if (item.Series.PremiereDate.HasValue && item.Series.PremiereDate.Value != DateTimeOffset.MinValue)
-                return item.Series.PremiereDate.Value;
+            if (item.Series != null)
+            {
+                if (item.Series.PremiereDate.HasValue && item.Series.PremiereDate.Value != DateTimeOffset.MinValue)
+                    return item.Series.PremiereDate.Value;
 
-            if (item.Series.ProductionYear is int year && year > 1 && year <= 9999)
-                return new DateTimeOffset(new DateTime(year, 1, 1), TimeSpan.Zero);
+                if (item.Series.ProductionYear is int year && year > 1 && year <= 9999)
+                    return new DateTimeOffset(new DateTime(year, 1, 1), TimeSpan.Zero);
+            }
 
             return item.DateCreated;
         }
@@ -497,11 +500,14 @@ namespace StrmAssistant.Common
             if (item.PremiereDate.HasValue && item.PremiereDate.Value != DateTimeOffset.MinValue)
                 return item.PremiereDate.Value > lookBackTime;
 
-            if (item.Series.PremiereDate.HasValue && item.Series.PremiereDate.Value != DateTimeOffset.MinValue)
-                return item.Series.PremiereDate.Value > lookBackTime;
+            if (item.Series != null)
+            {
+                if (item.Series.PremiereDate.HasValue && item.Series.PremiereDate.Value != DateTimeOffset.MinValue)
+                    return item.Series.PremiereDate.Value > lookBackTime;
 
-            if (item.Series.ProductionYear is int year && year > 1 && year <= 9999)
-                return year == lookBackTime.Year;
+                if (item.Series.ProductionYear is int year && year > 1 && year <= 9999)
+                    return year == lookBackTime.Year;
+            }
 
             return includeNoPrem;
         }
