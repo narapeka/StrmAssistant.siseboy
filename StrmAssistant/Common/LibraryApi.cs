@@ -1021,6 +1021,7 @@ namespace StrmAssistant.Common
                 })
                 .OfType<Episode>()
                 .Where(e => (string.IsNullOrWhiteSpace(e.Overview) || !e.HasImage(ImageType.Primary) ||
+                             IsDefaultChineseEpisodeName(e.Name) ||
                              (includeNonChineseOverview && !IsChinese(e.Overview))) &&
                             IsPremiereDateInScope(e, lookBackTime, true) && e.Series.ProviderIds.Count > 0)
                 .OrderByDescending(GetPremiereDateOrDefault)
@@ -1059,6 +1060,7 @@ namespace StrmAssistant.Common
                     })
                     .Items.OfType<Episode>()
                     .Where(e => (string.IsNullOrWhiteSpace(e.Overview) || !e.HasImage(ImageType.Primary) ||
+                                 IsDefaultChineseEpisodeName(e.Name) ||
                                  (includeNonChineseOverview && !IsChinese(e.Overview))) &&
                                 IsPremiereDateInScope(e, lookBackTime, false) && e.Series.ProviderIds.Count > 0);
 
