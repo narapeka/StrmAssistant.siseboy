@@ -1,3 +1,4 @@
+using Emby.Media.Common.Extensions;
 using Emby.Web.GenericEdit;
 using Emby.Web.GenericEdit.Common;
 using Emby.Web.GenericEdit.Validation;
@@ -109,6 +110,32 @@ namespace StrmAssistant.Options
         [Required]
         public bool EnhanceNfoMetadata { get; set; } = false;
         
+        public enum EpisodeRefreshOption
+        {
+            [DescriptionL("EpisodeRefreshOption_NoOverview_No_Overview", typeof(Resources))]
+            NoOverview,
+            [DescriptionL("EpisodeRefreshOption_NoImage_No_Image", typeof(Resources))]
+            NoImage,
+            [DescriptionL("EpisodeRefreshOption_NonChineseOverview_Non_Chinese_Overview", typeof(Resources))]
+            NonChineseOverview,
+            [DescriptionL("EpisodeRefreshOption_DefaultEpisodeName_Default_Episode_Name", typeof(Resources))]
+            DefaultEpisodeName
+        }
+
+        [Browsable(false)]
+        public List<EditorSelectOption> EpisodeRefreshOptionList { get; set; } = new List<EditorSelectOption>();
+
+        [DisplayNameL("MetadataEnhanceOptions_EpisodeRefreshScope_Episode_Metadata_Refresh_Scope", typeof(Resources))]
+        [DescriptionL("MetadataEnhanceOptions_EpisodeRefreshScope_Episode_refresh_scope_for_scheduled_task_and_catch_up__Default_is_no_overview_and_no_image_", typeof(Resources))]
+        [EditMultilSelect]
+        [SelectItemsSource(nameof(EpisodeRefreshOptionList))]
+        public string EpisodeRefreshScope { get; set; } = string.Join(",", EpisodeRefreshOption.NoOverview.ToString(),
+            EpisodeRefreshOption.NoImage.ToString());
+        
+        [Browsable(false)]
+        [Required]
+        public int EpisodeRefreshLookBackDays { get; set; } = 365;
+
         [DisplayNameL("MetadataEnhanceOptions_EnableAltMovieDbUrl", typeof(Resources))]
         [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         [Required]
@@ -131,14 +158,6 @@ namespace StrmAssistant.Options
         [VisibleCondition(nameof(AltMovieDbConfig), SimpleCondition.IsTrue)]
         [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
         public string AltMovieDbApiKey { get; set; } = string.Empty;
-
-        [Browsable(false)]
-        [Required]
-        public int EpisodeRefreshLookBackDays { get; set; } = 365;
-
-        [Browsable(false)]
-        [Required]
-        public bool EpisodeRefreshNonChineseOverview { get; set; } = false;
 
         [Browsable(false)]
         public bool IsMovieDbPluginLoaded =>
@@ -179,6 +198,20 @@ namespace StrmAssistant.Options
                     Name = language,
                     IsEnabled = true
                 });
+            }
+
+            EpisodeRefreshOptionList.Clear();
+
+            foreach (Enum item in Enum.GetValues(typeof(EpisodeRefreshOption)))
+            {
+                var selectOption = new EditorSelectOption
+                {
+                    Value = item.ToString(),
+                    Name = EnumExtensions.GetDescription(item),
+                    IsEnabled = true,
+                };
+
+                EpisodeRefreshOptionList.Add(selectOption);
             }
         }
 

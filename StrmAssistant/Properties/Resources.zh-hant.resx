@@ -629,4 +629,22 @@
   <data name="OKButtonCaption" xml:space="preserve">
     <value>接受</value>
   </data>
+  <data name="MetadataEnhanceOptions_EpisodeRefreshScope_Episode_Metadata_Refresh_Scope" xml:space="preserve">
+    <value>劇集刷新範圍</value>
+  </data>
+  <data name="EpisodeRefreshOption_NoOverview_No_Overview" xml:space="preserve">
+    <value>無簡介</value>
+  </data>
+  <data name="EpisodeRefreshOption_NoImage_No_Image" xml:space="preserve">
+    <value>無圖</value>
+  </data>
+  <data name="EpisodeRefreshOption_NonChineseOverview_Non_Chinese_Overview" xml:space="preserve">
+    <value>不是中文簡介</value>
+  </data>
+  <data name="EpisodeRefreshOption_DefaultEpisodeName_Default_Episode_Name" xml:space="preserve">
+    <value>預設集標題</value>
+  </data>
+  <data name="MetadataEnhanceOptions_EpisodeRefreshScope_Episode_refresh_scope_for_scheduled_task_and_catch_up__Default_is_no_overview_and_no_image_" xml:space="preserve">
+    <value>規劃任務與追更模式劇集元資料刷新的範圍，預設為無圖無簡介。</value>
+  </data>
 </root>

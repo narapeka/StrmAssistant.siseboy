@@ -161,6 +161,42 @@ namespace StrmAssistant.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Default Episode Name.
+        /// </summary>
+        public static string EpisodeRefreshOption_DefaultEpisodeName_Default_Episode_Name {
+            get {
+                return ResourceManager.GetString("EpisodeRefreshOption_DefaultEpisodeName_Default_Episode_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No Image.
+        /// </summary>
+        public static string EpisodeRefreshOption_NoImage_No_Image {
+            get {
+                return ResourceManager.GetString("EpisodeRefreshOption_NoImage_No_Image", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Non Chinese Overview.
+        /// </summary>
+        public static string EpisodeRefreshOption_NonChineseOverview_Non_Chinese_Overview {
+            get {
+                return ResourceManager.GetString("EpisodeRefreshOption_NonChineseOverview_Non_Chinese_Overview", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No Overview.
+        /// </summary>
+        public static string EpisodeRefreshOption_NoOverview_No_Overview {
+            get {
+                return ResourceManager.GetString("EpisodeRefreshOption_NoOverview_No_Overview", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Refresh metadata for episodes without overview or image.
         /// </summary>
         public static string EpisodeRefreshTask_Description_Refresh_metadata_for_episodes_missing_overview {
@@ -1177,6 +1213,25 @@ namespace StrmAssistant.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Episode Metadata Refresh Scope.
+        /// </summary>
+        public static string MetadataEnhanceOptions_EpisodeRefreshScope_Episode_Metadata_Refresh_Scope {
+            get {
+                return ResourceManager.GetString("MetadataEnhanceOptions_EpisodeRefreshScope_Episode_Metadata_Refresh_Scope", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Episode refresh scope for scheduled task and catch-up. Default is no overview and no image..
+        /// </summary>
+        public static string MetadataEnhanceOptions_EpisodeRefreshScope_Episode_refresh_scope_for_scheduled_task_and_catch_up__Default_is_no_overview_and_no_image_ {
+            get {
+                return ResourceManager.GetString("MetadataEnhanceOptions_EpisodeRefreshScope_Episode_refresh_scope_for_scheduled_ta" +
+                        "sk_and_catch_up__Default_is_no_overview_and_no_image_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Enable Local Episode Group.
         /// </summary>
         public static string MetadataEnhanceOptions_LocalEpisodeGroup_Local_Episode_Group {
@@ -1516,7 +1571,7 @@ namespace StrmAssistant.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to .
+        ///   Looks up a localized string similar to Accept.
         /// </summary>
         public static string OKButtonCaption {
             get {

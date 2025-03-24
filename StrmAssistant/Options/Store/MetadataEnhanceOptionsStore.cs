@@ -7,6 +7,7 @@ using StrmAssistant.Options.UIBaseClasses.Store;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using static StrmAssistant.Options.MetadataEnhanceOptions;
 
 namespace StrmAssistant.Options.Store
 {
@@ -52,6 +53,11 @@ namespace StrmAssistant.Options.Store
                     options.TvdbFallbackLanguages = string.Join(",",
                         LanguageUtility.TvdbFallbackLanguages
                             .Where(l => languages.Contains(l, StringComparer.OrdinalIgnoreCase)));
+                }
+
+                if (string.IsNullOrEmpty(options.EpisodeRefreshScope))
+                {
+                    options.EpisodeRefreshScope = EpisodeRefreshOption.NoOverview.ToString();
                 }
 
                 options.AltMovieDbApiUrl =
