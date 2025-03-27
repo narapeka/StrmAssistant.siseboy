@@ -44,6 +44,7 @@ namespace StrmAssistant.ScheduledTask
 
             var persistMediaInfoMode = Plugin.Instance.MediaInfoExtractStore.GetOptions().PersistMediaInfoMode;
             _logger.Info("Persist MediaInfo Mode: " + persistMediaInfoMode);
+            var persistMediaInfo = persistMediaInfoMode != PersistMediaInfoOption.None.ToString();
             var mediaInfoRestoreMode = persistMediaInfoMode == PersistMediaInfoOption.Restore.ToString();
 
             var items = Plugin.VideoThumbnailApi.FetchExtractTaskItems();
@@ -96,8 +97,13 @@ namespace StrmAssistant.ScheduledTask
 
                         var chapters = _itemRepository.GetChapters(taskItem);
 
-                        var thumbnailResult = await Plugin.MediaInfoApi.DeserializeChapterInfo(taskItem, chapters,
-                            directoryService, "VideoThumbnailExtract Task").ConfigureAwait(false);
+                        var thumbnailResult = false;
+
+                        if (persistMediaInfo)
+                        {
+                            thumbnailResult = await Plugin.MediaInfoApi.DeserializeChapterInfo(taskItem, chapters,
+                                directoryService, "VideoThumbnailExtract Task").ConfigureAwait(false);
+                        }
 
                         if (!thumbnailResult)
                         {

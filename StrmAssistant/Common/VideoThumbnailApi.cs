@@ -33,7 +33,7 @@ namespace StrmAssistant.Common
         private readonly MethodInfo _refreshThumbnailImages;
 
         private static readonly Version AppVer = Plugin.Instance.ApplicationHost.ApplicationVersion;
-        private static readonly Version Ver4925 = new Version("4.9.0.25");
+        private static readonly Version Ver4936 = new Version("4.9.0.36");
 
         public VideoThumbnailApi(ILibraryManager libraryManager, IFileSystem fileSystem,
             IImageExtractionManager imageExtractionManager, IItemRepository itemRepository,
@@ -80,7 +80,7 @@ namespace StrmAssistant.Common
             else if (Plugin.Instance.IsModSupported)
             {
                 PatchManager.ReversePatch(PatchTracker, _refreshThumbnailImages,
-                    AppVer >= Ver4925 ? nameof(RefreshThumbnailImagesStub49) : nameof(RefreshThumbnailImagesStub48));
+                    AppVer >= Ver4936 ? nameof(RefreshThumbnailImagesStub49) : nameof(RefreshThumbnailImagesStub48));
             }
         }
 
@@ -103,21 +103,21 @@ namespace StrmAssistant.Common
             IDirectoryService directoryService, List<ChapterInfo> chapters, bool extractImages, bool saveChapters,
             CancellationToken cancellationToken)
         {
-            var mediaSource = AppVer >= Ver4925
+            var mediaSource = AppVer >= Ver4936
                 ? item.GetMediaSources(false, false, libraryOptions).FirstOrDefault()
                 : null;
 
             switch (PatchTracker.FallbackPatchApproach)
             {
                 case PatchApproach.Harmony:
-                    return AppVer >= Ver4925
+                    return AppVer >= Ver4936
                         ? RefreshThumbnailImagesStub49(_thumbnailGenerator, item, mediaSource, null, libraryOptions,
                             directoryService, chapters, extractImages, saveChapters, cancellationToken)
                         : RefreshThumbnailImagesStub48(_thumbnailGenerator, item, null, libraryOptions,
                             directoryService, chapters, extractImages, saveChapters, cancellationToken);
                 case PatchApproach.Reflection:
                 {
-                    var parameters = AppVer >= Ver4925
+                    var parameters = AppVer >= Ver4936
                         ? new object[]
                         {
                             item, mediaSource, null, libraryOptions, directoryService, chapters, extractImages,
