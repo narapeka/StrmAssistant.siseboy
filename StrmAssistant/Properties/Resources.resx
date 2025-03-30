@@ -435,7 +435,7 @@
     <value>Persist MediaInfo</value>
   </data>
   <data name="PersistMediaInfoTask_Description_Persists_media_info_to_json_file" xml:space="preserve">
-    <value>Persists media info and chapter markers to json file</value>
+    <value>Export media info and chapter markers to JSON files</value>
   </data>
   <data name="RefreshPersonTask_Name_Refresh_Chinese_Actor" xml:space="preserve">
     <value>Refresh Chinese Actor</value>

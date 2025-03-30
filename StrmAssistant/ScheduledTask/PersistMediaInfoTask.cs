@@ -39,7 +39,8 @@ namespace StrmAssistant
             double total = items.Count;
             var index = 0;
             var current = 0;
-            
+            var skip = 0;
+
             var tasks = new List<Task>();
 
             foreach (var item in items)
@@ -72,16 +73,18 @@ namespace StrmAssistant
                             return;
                         }
 
-                        await Plugin.MediaInfoApi.SerializeMediaInfo(taskItem.InternalId, directoryService, false,
+                        var result = await Plugin.MediaInfoApi.SerializeMediaInfo(taskItem.InternalId, directoryService, false,
                             "Persist MediaInfo Task").ConfigureAwait(false);
+
+                        if (!result) Interlocked.Increment(ref skip);
                     }
                     catch (OperationCanceledException)
                     {
-                        _logger.Info("MediaInfoPersist - Item cancelled: " + taskItem.Name + " - " + taskItem.Path);
+                        _logger.Info($"MediaInfoPersist - Item cancelled: {taskItem.Name} - {taskItem.Path}");
                     }
                     catch (Exception e)
                     {
-                        _logger.Error("MediaInfoPersist - Item failed: " + taskItem.Name + " - " + taskItem.Path);
+                        _logger.Error($"MediaInfoPersist - Item failed: {taskItem.Name} - {taskItem.Path}");
                         _logger.Error(e.Message);
                         _logger.Debug(e.StackTrace);
                     }
@@ -91,8 +94,6 @@ namespace StrmAssistant
 
                         var currentCount = Interlocked.Increment(ref current);
                         progress.Report(currentCount / total * 100);
-                        _logger.Info("MediaInfoPersist - Progress " + currentCount + "/" + total + " - " +
-                                     "Task " + taskIndex + ": " + taskItem.Path);
                     }
                 }, cancellationToken);
                 tasks.Add(task);
@@ -101,6 +102,7 @@ namespace StrmAssistant
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
             progress.Report(100.0);
+            _logger.Info($"MediaInfoPersist - Number of items skipped: {skip}");
             _logger.Info("MediaInfoPersist - Scheduled Task Complete");
         }
 

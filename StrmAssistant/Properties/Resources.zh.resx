@@ -348,7 +348,7 @@
     <value>持久化媒体信息</value>
   </data>
   <data name="PersistMediaInfoTask_Description_Persists_media_info_to_json_file" xml:space="preserve">
-    <value>保存媒体信息，章节片头片尾标记至 JSON 文件</value>
+    <value>导出媒体信息，章节片头片尾标记至 JSON 文件</value>
   </data>
   <data name="RefreshPersonTask_Name_Refresh_Chinese_Actor" xml:space="preserve">
     <value>刷新演员信息</value>
