@@ -314,7 +314,7 @@ namespace StrmAssistant.Mod
 
                 if (provider is IDynamicImageProviderWithLibraryOptions && item.HasImage(ImageType.Primary) &&
                     (IsExclusiveFeatureSelected(item.InternalId, ExclusiveControl.CatchAllBlock) ||
-                     !IsExclusiveFeatureSelected(ExclusiveControl.CatchAllAllow) && !refreshOptions.ReplaceAllImages))
+                     !IsExclusiveFeatureSelected(ExclusiveControl.CatchAllAllow) && !options.ReplaceAllImages))
                 {
                     __result = false;
                     return false;

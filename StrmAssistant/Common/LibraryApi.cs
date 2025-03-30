@@ -185,6 +185,7 @@ namespace StrmAssistant.Common
                      ((l.CollectionType == CollectionType.TvShows.ToString() && t.Type == nameof(Episode)) ||
                       (l.CollectionType == CollectionType.Movies.ToString() && t.Type == nameof(Movie)) ||
                       (l.CollectionType == CollectionType.HomeVideos.ToString() && t.Type == nameof(Video)) ||
+                      (l.CollectionType == CollectionType.Music.ToString() && t.Type == nameof(MusicVideo)) ||
                       (l.CollectionType == CollectionType.MusicVideos.ToString() && t.Type == nameof(MusicVideo)) ||
                       (l.CollectionType is null && (t.Type == nameof(Episode) || t.Type == nameof(Movie))))) ||
                     (t.ImageFetchers.Contains("Embedded Images") &&

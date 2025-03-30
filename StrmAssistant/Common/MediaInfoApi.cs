@@ -1,5 +1,6 @@
 ﻿using HarmonyLib;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Persistence;
@@ -42,12 +43,13 @@ namespace StrmAssistant.Common
         private readonly bool _fallbackApproach;
         private readonly MethodInfo _getPlaybackMediaSources;
         private readonly MethodInfo _getStaticMediaSources;
-        
+
         internal class MediaSourceWithChapters
         {
             public MediaSourceInfo MediaSourceInfo { get; set; }
             public List<ChapterInfo> Chapters { get; set; } = new List<ChapterInfo>();
             public bool? ZeroFingerprintConfidence { get; set; }
+            public string EmbeddedImage { get; set; }
         }
 
         public MediaInfoApi(ILibraryManager libraryManager, IFileSystem fileSystem, IProviderManager providerManager,
@@ -241,52 +243,61 @@ namespace StrmAssistant.Common
             {
                 try
                 {
-                    await Task.Run(() =>
+                    var options = _libraryManager.GetLibraryOptions(item);
+                    var mediaSources = item.GetMediaSources(false, false, options);
+                    var chapters = BaseItem.ItemRepository.GetChapters(item);
+                    var mediaSourcesWithChapters = mediaSources.Select(mediaSource =>
+                            new MediaSourceWithChapters
+                                { MediaSourceInfo = mediaSource, Chapters = chapters })
+                        .ToList();
+
+                    foreach (var jsonItem in mediaSourcesWithChapters)
+                    {
+                        jsonItem.MediaSourceInfo.Id = null;
+                        jsonItem.MediaSourceInfo.ItemId = null;
+                        jsonItem.MediaSourceInfo.Path = null;
+
+                        foreach (var subtitle in jsonItem.MediaSourceInfo.MediaStreams.Where(m =>
+                                     m.IsExternal && m.Type == MediaStreamType.Subtitle &&
+                                     m.Protocol == MediaProtocol.File))
                         {
-                            var options = _libraryManager.GetLibraryOptions(item);
-                            var mediaSources = item.GetMediaSources(false, false, options);
-                            var chapters = BaseItem.ItemRepository.GetChapters(item);
-                            var mediaSourcesWithChapters = mediaSources.Select(mediaSource =>
-                                    new MediaSourceWithChapters
-                                        { MediaSourceInfo = mediaSource, Chapters = chapters })
-                                .ToList();
+                            subtitle.Path = _fileSystem.GetFileInfo(subtitle.Path).Name;
+                        }
 
-                            foreach (var jsonItem in mediaSourcesWithChapters)
+                        foreach (var chapter in jsonItem.Chapters)
+                        {
+                            chapter.ImageTag = null;
+                        }
+
+                        if (item is Episode)
+                        {
+                            jsonItem.ZeroFingerprintConfidence =
+                                !string.IsNullOrEmpty(
+                                    BaseItem.ItemRepository.GetIntroDetectionFailureResult(
+                                        item.InternalId));
+                        }
+
+                        if (item is Audio)
+                        {
+                            var primaryImageInfo = item.GetImageInfo(ImageType.Primary, 0);
+                            if (primaryImageInfo != null && _fileSystem.FileExists(primaryImageInfo.Path))
                             {
-                                jsonItem.MediaSourceInfo.Id = null;
-                                jsonItem.MediaSourceInfo.ItemId = null;
-                                jsonItem.MediaSourceInfo.Path = null;
-
-                                foreach (var subtitle in jsonItem.MediaSourceInfo.MediaStreams.Where(m =>
-                                             m.IsExternal && m.Type == MediaStreamType.Subtitle &&
-                                             m.Protocol == MediaProtocol.File))
-                                {
-                                    subtitle.Path = _fileSystem.GetFileInfo(subtitle.Path).Name;
-                                }
-
-                                foreach (var chapter in jsonItem.Chapters)
-                                {
-                                    chapter.ImageTag = null;
-                                }
-
-                                if (item is Episode)
-                                {
-                                    jsonItem.ZeroFingerprintConfidence =
-                                        !string.IsNullOrEmpty(
-                                            BaseItem.ItemRepository.GetIntroDetectionFailureResult(
-                                                item.InternalId));
-                                }
+                                var imageBytes = await _fileSystem
+                                    .ReadAllBytesAsync(primaryImageInfo.Path, CancellationToken.None)
+                                    .ConfigureAwait(false);
+                                var base64String = Convert.ToBase64String(imageBytes);
+                                jsonItem.EmbeddedImage = base64String;
                             }
+                        }
+                    }
 
-                            var parentDirectory = Path.GetDirectoryName(mediaInfoJsonPath);
-                            if (!string.IsNullOrEmpty(parentDirectory))
-                            {
-                                Directory.CreateDirectory(parentDirectory);
-                            }
+                    var parentDirectory = Path.GetDirectoryName(mediaInfoJsonPath);
+                    if (!string.IsNullOrEmpty(parentDirectory))
+                    {
+                        Directory.CreateDirectory(parentDirectory);
+                    }
 
-                            _jsonSerializer.SerializeToFile(mediaSourcesWithChapters, mediaInfoJsonPath);
-                        })
-                        .ConfigureAwait(false);
+                    _jsonSerializer.SerializeToFile(mediaSourcesWithChapters, mediaInfoJsonPath);
 
                     _logger.Info("MediaInfoPersist - Serialization Success (" + source + "): " + mediaInfoJsonPath);
 
@@ -353,6 +364,20 @@ namespace StrmAssistant.Common
 
                         _itemRepository.SaveMediaStreams(item.InternalId,
                             mediaSourceWithChapters.MediaSourceInfo.MediaStreams, CancellationToken.None);
+
+                        if (workItem is Audio && !string.IsNullOrEmpty(mediaSourceWithChapters.EmbeddedImage))
+                        {
+                            var imageBytes = Convert.FromBase64String(mediaSourceWithChapters.EmbeddedImage);
+                            var tempPath = Path.Combine(Plugin.Instance.ApplicationPaths.TempDirectory,
+                                Guid.NewGuid() + ".jpg");
+                            await _fileSystem.WriteAllBytesAsync(tempPath, imageBytes, CancellationToken.None)
+                                .ConfigureAwait(false);
+
+                            var libraryOptions = _libraryManager.GetLibraryOptions(workItem);
+                            await _providerManager.SaveImage(workItem, libraryOptions, tempPath, ImageType.Primary,
+                                    null, Array.Empty<long>(), directoryService, false, CancellationToken.None)
+                                .ConfigureAwait(false);
+                        }
 
                         workItem.Size = mediaSourceWithChapters.MediaSourceInfo.Size.GetValueOrDefault();
                         workItem.RunTimeTicks = mediaSourceWithChapters.MediaSourceInfo.RunTimeTicks;
