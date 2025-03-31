@@ -170,30 +170,11 @@ namespace StrmAssistant
 
         private void OnRefreshCompleted(object sender, GenericEventArgs<RefreshProgressInfo> e)
         {
-            var item = e.Argument.Item;
-
-            if (item is Video && item.DateLastRefreshed != DateTimeOffset.MinValue &&
-                MediaInfoExtractStore.GetOptions().PersistMediaInfoMode != PersistMediaInfoOption.None.ToString())
-            {
-                var directoryService = new DirectoryService(Logger, _fileSystem);
-
-                if (!LibraryApi.HasMediaInfo(item))
-                {
-                    _ = MediaInfoApi.DeserializeMediaInfo(item, directoryService, "OnRefreshCompleted Restore", false)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    _ = MediaInfoApi.SerializeMediaInfo(item.InternalId, directoryService, false,
-                        "OnRefreshCompleted Non-existent").ConfigureAwait(false);
-                }
-            }
-
             if (_libraryManager.IsScanRunning) return;
 
             var options = ExperienceEnhanceStore.GetOptions();
 
-            if (options.MergeMultiVersion && item.IsTopParent)
+            if (options.MergeMultiVersion && e.Argument.Item.IsTopParent)
             {
                 var library = e.Argument.CollectionFolders.OfType<CollectionFolder>().FirstOrDefault();
 

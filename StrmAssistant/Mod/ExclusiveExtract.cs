@@ -478,27 +478,44 @@ namespace StrmAssistant.Mod
                     Plugin.LibraryApi.UpdateDateModifiedLastSaved(__instance, directoryService);
                 }
 
-                if (CurrentRefreshContext.Value.IsPersistInScope && CurrentRefreshContext.Value.MediaInfoUpdated)
+                if (CurrentRefreshContext.Value.IsPersistInScope)
                 {
-                    if (__instance.IsShortcut && !refreshOptions.EnableRemoteContentProbe)
-                    {
-                        var ignoreFileChange = IsExclusiveFeatureSelected(ExclusiveControl.IgnoreFileChange);
+                    var ignoreFileChange = IsExclusiveFeatureSelected(ExclusiveControl.IgnoreFileChange);
 
-                        if (!CurrentRefreshContext.Value.IsFileChanged)
+                    if (CurrentRefreshContext.Value.MediaInfoUpdated)
+                    {
+                        if (__instance.IsShortcut && !refreshOptions.EnableRemoteContentProbe)
                         {
-                            _ = Plugin.MediaInfoApi.DeserializeMediaInfo(__instance, directoryService,
-                                "Exclusive Restore", ignoreFileChange).ConfigureAwait(false);
+                            if (!CurrentRefreshContext.Value.IsFileChanged)
+                            {
+                                _ = Plugin.MediaInfoApi.DeserializeMediaInfo(__instance, directoryService,
+                                    "Exclusive Restore", true).ConfigureAwait(false);
+                            }
+                            else if (!ignoreFileChange)
+                            {
+                                Plugin.MediaInfoApi.DeleteMediaInfoJson(__instance, directoryService,
+                                    "Exclusive Delete on Change");
+                            }
                         }
-                        else if (!ignoreFileChange)
+                        else
                         {
-                            Plugin.MediaInfoApi.DeleteMediaInfoJson(__instance, directoryService,
-                                "Exclusive Delete on Change");
+                            _ = Plugin.MediaInfoApi.SerializeMediaInfo(__instance.InternalId, directoryService, true,
+                                "Exclusive Overwrite").ConfigureAwait(false);
                         }
                     }
-                    else
+                    else if (!CurrentRefreshContext.Value.IsNewItem && CurrentRefreshContext.Value.IsScanning)
                     {
-                        _ = Plugin.MediaInfoApi.SerializeMediaInfo(__instance.InternalId, directoryService, true,
-                            "Exclusive Overwrite").ConfigureAwait(false);
+                        if (!Plugin.LibraryApi.HasMediaInfo(__instance))
+                        {
+                            _ = Plugin.MediaInfoApi
+                                .DeserializeMediaInfo(__instance, directoryService, "Exclusive Restore",
+                                    ignoreFileChange).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            _ = Plugin.MediaInfoApi.SerializeMediaInfo(__instance.InternalId, directoryService, false,
+                                "Exclusive Non-existent").ConfigureAwait(false);
+                        }
                     }
                 }
             }
