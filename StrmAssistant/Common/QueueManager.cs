@@ -463,21 +463,22 @@ namespace StrmAssistant.Common
                                     {
                                         if (cancellationToken.IsCancellationRequested)
                                         {
-                                            Logger.Info("IntroFingerprintExtract - Episode cancelled: " + taskItem.Name + " - " +
-                                                        taskItem.Path);
+                                            Logger.Info("IntroFingerprintExtract - Episode cancelled: " +
+                                                        taskItem.Name + " - " + taskItem.Path);
                                             return;
                                         }
 
                                         if (Plugin.LibraryApi.IsExtractNeeded(taskItem, enableImageCapture))
                                         {
-                                            result1 = await Plugin.LibraryApi
-                                                .OrchestrateMediaInfoProcessAsync(taskItem, "IntroFingerprintExtract Catchup",
-                                                    cancellationToken).ConfigureAwait(false);
+                                            result1 = await Plugin.LibraryApi.OrchestrateMediaInfoProcessAsync(taskItem,
+                                                    "IntroFingerprintExtract Catchup", cancellationToken)
+                                                .ConfigureAwait(false);
 
                                             if (result1 is null)
                                             {
-                                                Logger.Info("IntroFingerprintExtract - Episode skipped or non-existent: " + taskItem.Name +
-                                                            " - " + taskItem.Path);
+                                                Logger.Info(
+                                                    "IntroFingerprintExtract - Episode skipped or non-existent: " +
+                                                    taskItem.Name + " - " + taskItem.Path);
                                                 seasonSkip = true;
                                                 return;
                                             }
@@ -493,18 +494,18 @@ namespace StrmAssistant.Common
                                             .CreateTitleFingerprint(taskItem, cancellationToken)
                                             .ConfigureAwait(false);
 
-                                        Logger.Info("IntroFingerprintExtract - Episode processed: " + taskItem.Name + " - " +
-                                                    taskItem.Path);
+                                        Logger.Info("IntroFingerprintExtract - Episode processed: " + taskItem.Name +
+                                                    " - " + taskItem.Path);
                                     }
                                     catch (OperationCanceledException)
                                     {
-                                        Logger.Info("IntroFingerprintExtract - Episode cancelled: " + taskItem.Name + " - " +
-                                                    taskItem.Path);
+                                        Logger.Info("IntroFingerprintExtract - Episode cancelled: " + taskItem.Name +
+                                                    " - " + taskItem.Path);
                                     }
                                     catch (Exception e)
                                     {
-                                        Logger.Error("IntroFingerprintExtract - Episode failed: " + taskItem.Name + " - " +
-                                                     taskItem.Path);
+                                        Logger.Error("IntroFingerprintExtract - Episode failed: " + taskItem.Name +
+                                                     " - " + taskItem.Path);
                                         Logger.Error(e.Message);
                                         Logger.Debug(e.StackTrace);
                                     }
@@ -529,57 +530,68 @@ namespace StrmAssistant.Common
                                 episodeTasks.Add(task);
                             }
 
-                            if (cancellationToken.IsCancellationRequested)
+                            if (seasonSkip)
                             {
-                                Logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name + " - " +
-                                            taskSeason.Path);
-                                break;
-                            }
+                                await Task.WhenAll(episodeTasks).ConfigureAwait(false);
 
-                            var seasonTask = Task.Run(async () =>
+                                Logger.Info("IntroFingerprintExtract - Season skipped: " + taskSeason.Name + " - " +
+                                            taskSeason.Path);
+                            }
+                            else
                             {
-                                try
+                                if (cancellationToken.IsCancellationRequested)
+                                {
+                                    Logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name +
+                                                " - " + taskSeason.Path);
+                                    break;
+                                }
+
+                                var seasonTask = Task.Run(async () =>
                                 {
                                     await Task.WhenAll(episodeTasks).ConfigureAwait(false);
 
+                                    try
+                                    {
+                                        await Tier2Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                                    }
+                                    catch
+                                    {
+                                        return;
+                                    }
+
                                     if (cancellationToken.IsCancellationRequested)
                                     {
-                                        Logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name + " - " +
-                                                    taskSeason.Path);
+                                        Tier2Semaphore.Release();
+                                        Logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name +
+                                                    " - " + taskSeason.Path);
                                         return;
                                     }
 
-                                    if (seasonSkip)
+                                    try
                                     {
-                                        Logger.Info("IntroFingerprintExtract - Season skipped: " + taskSeason.Name + " - " +
-                                                    taskSeason.Path);
-                                        return;
+                                        await Plugin.FingerprintApi
+                                            .UpdateIntroMarkerForSeason(taskSeason, cancellationToken)
+                                            .ConfigureAwait(false);
                                     }
-
-                                    await Tier2Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                                    await Plugin.FingerprintApi
-                                        .UpdateIntroMarkerForSeason(taskSeason, cancellationToken)
-                                        .ConfigureAwait(false);
-                                }
-                                catch (OperationCanceledException)
-                                {
-                                    Logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name + " - " +
-                                                taskSeason.Path);
-                                }
-                                catch (Exception e)
-                                {
-                                    Logger.Error("IntroFingerprintExtract - Season failed: " + taskSeason.Name + " - " +
-                                                 taskSeason.Path);
-                                    Logger.Error(e.Message);
-                                    Logger.Debug(e.StackTrace);
-                                }
-                                finally
-                                {
-                                    Tier2Semaphore.Release();
-                                }
-                            }, cancellationToken);
-                            seasonTasks.Add(seasonTask);
+                                    catch (OperationCanceledException)
+                                    {
+                                        Logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name +
+                                                    " - " + taskSeason.Path);
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Logger.Error("IntroFingerprintExtract - Season failed: " + taskSeason.Name +
+                                                     " - " + taskSeason.Path);
+                                        Logger.Error(e.Message);
+                                        Logger.Debug(e.StackTrace);
+                                    }
+                                    finally
+                                    {
+                                        Tier2Semaphore.Release();
+                                    }
+                                }, cancellationToken);
+                                seasonTasks.Add(seasonTask);
+                            }
                         }
                         await Task.WhenAll(seasonTasks).ConfigureAwait(false);
 

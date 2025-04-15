@@ -61,6 +61,7 @@ namespace StrmAssistant.ScheduledTask
             var postExtractEpisodes = Plugin.FingerprintApi.FetchIntroFingerprintTaskItems();
             var episodes= preExtractEpisodes.Concat(postExtractEpisodes).ToList();
             var groupedBySeason = episodes.GroupBy(e => e.Season).ToList();
+            var seasonTasks = new List<Task>();
 
             _logger.Info($"IntroFingerprintExtract - Number of seasons: {groupedBySeason.Count}");
             _logger.Info($"IntroFingerprintExtract - Number of episodes: {episodes.Count}");
@@ -75,8 +76,6 @@ namespace StrmAssistant.ScheduledTask
             var episodeSkipCount = 0;
             var seasonSkipCount = 0;
 
-            var episodeTasks = new List<Task>();
-
             foreach (var season in groupedBySeason)
             {
                 var taskSeason = season.Key;
@@ -87,7 +86,8 @@ namespace StrmAssistant.ScheduledTask
                     return;
                 }
 
-                var seasonSkip = false;
+                var episodeTasks = new List<Task>();
+                var seasonSkip = mediaInfoRestoreMode;
 
                 foreach (var episode in season)
                 {
@@ -150,7 +150,7 @@ namespace StrmAssistant.ScheduledTask
                                     directoryService, "IntroFingerprintExtract Task").ConfigureAwait(false);
                             }
 
-                            if ((!persistMediaInfo || !deserializeResult) && !Plugin.ChapterApi.HasIntro(taskEpisode))
+                            if (!deserializeResult && !Plugin.ChapterApi.HasIntro(taskEpisode))
                             {
                                 if (!mediaInfoRestoreMode)
                                 {
@@ -161,7 +161,6 @@ namespace StrmAssistant.ScheduledTask
                                 else
                                 {
                                     Interlocked.Increment(ref episodeSkipCount);
-                                    seasonSkip = true;
                                 }
                             }
                         }
@@ -209,6 +208,8 @@ namespace StrmAssistant.ScheduledTask
 
                 if (seasonSkip)
                 {
+                    await Task.WhenAll(episodeTasks).ConfigureAwait(false);
+
                     if (!mediaInfoRestoreMode)
                     {
                         _logger.Info(
@@ -217,26 +218,66 @@ namespace StrmAssistant.ScheduledTask
 
                     Interlocked.Increment(ref seasonSkipCount);
                 }
+                else
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
+                        return;
+                    }
+
+                    var seasonTask = Task.Run(async () =>
+                    {
+                        await Task.WhenAll(episodeTasks).ConfigureAwait(false);
+
+                        try
+                        {
+                            await QueueManager.Tier2Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            return;
+                        }
+
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            QueueManager.Tier2Semaphore.Release();
+                            _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
+                            return;
+                        }
+
+                        try
+                        {
+                            await Plugin.FingerprintApi
+                                .UpdateIntroMarkerForSeason(taskSeason, cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.Info("IntroFingerprintExtract - Season cancelled: " + taskSeason.Name + " - " +
+                                         taskSeason.Path);
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.Error("IntroFingerprintExtract - Season failed: " + taskSeason.Name + " - " +
+                                          taskSeason.Path);
+                            _logger.Error(e.Message);
+                            _logger.Debug(e.StackTrace);
+                        }
+                        finally
+                        {
+                            QueueManager.Tier2Semaphore.Release();
+                        }
+                    }, cancellationToken);
+                    seasonTasks.Add(seasonTask);
+                }
             }
 
-            await Task.WhenAll(episodeTasks).ConfigureAwait(false);
+            await Task.WhenAll(seasonTasks).ConfigureAwait(false);
 
             if (episodes.Count > 0) IsRunning = false;
 
             progress.Report(100.0);
-
-            if (!mediaInfoRestoreMode)
-            {
-                var markerTask = _taskManager.ScheduledTasks.FirstOrDefault(t =>
-                    t.Name.Equals("Detect Episode Intros", StringComparison.OrdinalIgnoreCase));
-                if (markerTask != null && groupedBySeason.Count > seasonSkipCount &&
-                    !cancellationToken.IsCancellationRequested)
-                {
-                    _ = _taskManager.Execute(markerTask, new TaskOptions());
-                    _logger.Info("IntroFingerprintExtract - Triggered Detect Episode Intros to process fingerprints");
-                }
-            }
-
             _logger.Info($"IntroFingerprintExtract - Number of seasons skipped: {seasonSkipCount}");
             _logger.Info($"IntroFingerprintExtract - Number of episodes skipped: {episodeSkipCount}");
             _logger.Info("IntroFingerprintExtract - Scheduled Task Complete");
