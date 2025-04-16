@@ -55,3 +55,7 @@
 
 1. 本项目开发者不对因使用本项目而可能导致的任何直接或间接后果（包括但不限于数据丢失、软件故障或法律纠纷）负责。
 2. 如果认为本项目可能侵犯相关方的合法权益，请与开发者取得联系。
+
+### 星星数
+
+[![Star History Chart](https://api.star-history.com/svg?repos=sjtuross/strmassistant&type=Date)](https://www.star-history.com/#sjtuross/strmassistant&Date)
