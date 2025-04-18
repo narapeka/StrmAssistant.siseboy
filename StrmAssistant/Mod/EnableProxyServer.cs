@@ -15,9 +15,7 @@ namespace StrmAssistant.Mod
 
         private static readonly string[] BypassAddressList =
         {
-            @"^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$",
-            @"^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$",
-            @"^192\.168\.\d{1,3}\.\d{1,3}$"
+            "10.*", "172.1[6-9].*", "172.2[0-9].*", "172.3[0-1].*", "192.168.*"
         };
 
         public EnableProxyServer()
