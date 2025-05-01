@@ -2,6 +2,7 @@
 using MediaBrowser.Model.Updates;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -60,7 +61,10 @@ namespace StrmAssistant.Mod
                     .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                     .Select(p => p.Trim()), StringComparer.OrdinalIgnoreCase);
 
-            result = result.Where(p => !suppressPluginUpdates.Contains(p.name)).ToArray();
+            result = result.Where(p =>
+                    !suppressPluginUpdates.Contains(p.name) &&
+                    !suppressPluginUpdates.Contains(Path.GetFileNameWithoutExtension(p.targetFilename)))
+                .ToArray();
 
             return Task.FromResult(result);
         }
