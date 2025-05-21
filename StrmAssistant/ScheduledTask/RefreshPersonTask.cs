@@ -3,7 +3,6 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Tasks;
 using StrmAssistant.Common;
@@ -22,13 +21,15 @@ namespace StrmAssistant.ScheduledTask
     {
         private readonly ILogger _logger;
         private readonly ILibraryManager _libraryManager;
-        private readonly IFileSystem _fileSystem;
 
-        public RefreshPersonTask(ILibraryManager libraryManager, IFileSystem fileSystem)
+        private static readonly HashSet<string> ProviderIdCheckKeys =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tmdb", "imdb", "tvdb" };
+        private static readonly Random Random = new Random();
+
+        public RefreshPersonTask(ILibraryManager libraryManager)
         {
             _logger = Plugin.Instance.Logger;
             _libraryManager = libraryManager;
-            _fileSystem = fileSystem;
         }
 
         public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
@@ -53,19 +54,27 @@ namespace StrmAssistant.ScheduledTask
                 return;
             }
 
+            var tier2MaxConcurrentCount =
+                Plugin.Instance.MainOptionsStore.GetOptions().GeneralOptions.Tier2MaxConcurrentCount;
+            _logger.Info("Tier2 Max Concurrent Count: " + tier2MaxConcurrentCount);
+
             var personQuery = new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { nameof(Person) },
-                IsLocked = false
+                IsLocked = false,
+                HasAnyProviderId = new[]
+                {
+                    MetadataProviders.Tmdb.ToString(),
+                    MetadataProviders.Imdb.ToString(),
+                    MetadataProviders.Tvdb.ToString()
+                }
             };
             var personItems = _libraryManager.GetItemList(personQuery).Cast<Person>().ToList();
             _logger.Info("RefreshPerson - Number of Persons Before: " + personItems.Count);
 
-            var checkKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tmdb", "imdb", "tvdb" };
-
             var dupPersonItems = personItems.Where(item => item.ProviderIds != null)
                 .SelectMany(item => item.ProviderIds
-                    .Where(kvp => checkKeys.Contains(kvp.Key))
+                    .Where(kvp => ProviderIdCheckKeys.Contains(kvp.Key))
                     .Select(kvp => new { kvp.Key, kvp.Value, item }))
                 .GroupBy(kvp => new { kvp.Key, kvp.Value })
                 .Where(group => group.Count() > 1)
@@ -96,11 +105,8 @@ namespace StrmAssistant.ScheduledTask
             }
             _logger.Info("RefreshPerson - Number of Duplicate Persons Deleted: " + dupPersonItems.Count);
 
-            var skipCount = personItems
-                .Count(item => item.ProviderIds != null &&
-                               !item.ProviderIds.Keys.Any(key =>
-                                   string.Equals(key, "tmdb", StringComparison.OrdinalIgnoreCase)));
-            _logger.Info("RefreshPerson - Number of Persons without TmdbId Skipped: " + skipCount);
+            var skipCount = personItems.Count(i => !i.HasProviderId(MetadataProviders.Tmdb));
+            _logger.Info("RefreshPerson - Number of Persons without Tmdb Id Skipped: " + skipCount);
 
             var remainingCount = personItems.Count - dupPersonItems.Count - skipCount;
             _logger.Info("RefreshPerson - Number of Persons After: " + remainingCount);
@@ -108,7 +114,7 @@ namespace StrmAssistant.ScheduledTask
             personItems.Clear();
             personItems.TrimExcess();
 
-            personQuery.HasAnyProviderId = new[] { "tmdb" };
+            personQuery.HasAnyProviderId = new[] { MetadataProviders.Tmdb.ToString() };
 
             double total = remainingCount;
             var current = 0;
@@ -118,11 +124,13 @@ namespace StrmAssistant.ScheduledTask
             IsRunning = true;
 
             var refreshPersonMode = Plugin.Instance.MetadataEnhanceStore.GetOptions().RefreshPersonMode;
-            _logger.Info("Refresh Person Mode: " + refreshPersonMode);
-            var refreshPersonOptions = new HashSet<string>(
-                refreshPersonMode.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => p.Trim()), StringComparer.OrdinalIgnoreCase);
-            NoAdult = refreshPersonOptions.Contains(RefreshPersonOption.NoAdult.ToString());
+            var refreshPersonOptions = Enum.GetValues<RefreshPersonOption>()
+                .Where(o => refreshPersonMode?.Contains(o.ToString(), StringComparison.OrdinalIgnoreCase) is true)
+                .ToHashSet();
+            _logger.Info("Refresh Person Mode: " + (refreshPersonOptions.Any()
+                ? string.Join(", ", refreshPersonOptions)
+                : RefreshPersonOption.Default.ToString()));
+            NoAdult = refreshPersonOptions.Contains(RefreshPersonOption.NoAdult);
 
             for (var startIndex = 0; startIndex < remainingCount; startIndex += batchSize)
             {
@@ -142,14 +150,16 @@ namespace StrmAssistant.ScheduledTask
                 {
                     var taskItem = item;
 
-                    var nameRefreshSkip = !refreshPersonOptions.Contains(RefreshPersonOption.FullRefresh.ToString()) &&
-                                          IsChinese(taskItem.Name) && IsChinese(taskItem.Overview) &&
-                                          taskItem.DateLastSaved >= DateTimeOffset.UtcNow.AddDays(-30);
+                    var metadataRefreshSkip =
+                        (taskItem.IsFieldLocked(MetadataFields.Name) &&
+                         taskItem.IsFieldLocked(MetadataFields.Overview)) ||
+                        (!refreshPersonOptions.Contains(RefreshPersonOption.FullRefresh) && IsChinese(taskItem.Name) &&
+                         IsChinese(taskItem.Overview) && taskItem.DateLastSaved >= DateTimeOffset.UtcNow.AddDays(-30));
                     var imageRefreshSkip = taskItem.HasImage(ImageType.Primary) ||
-                                           !refreshPersonOptions.Contains(RefreshPersonOption.FullRefresh.ToString()) &&
+                                           !refreshPersonOptions.Contains(RefreshPersonOption.FullRefresh) &&
                                            taskItem.DateLastRefreshed >= DateTimeOffset.UtcNow.AddDays(-30);
 
-                    if (nameRefreshSkip && imageRefreshSkip)
+                    if (metadataRefreshSkip && imageRefreshSkip)
                     {
                         var currentCount = Interlocked.Increment(ref current);
                         progress.Report(currentCount / total * 100);
@@ -178,6 +188,13 @@ namespace StrmAssistant.ScheduledTask
                     {
                         try
                         {
+                            await Task.Delay(
+                                    Random.Next(0,
+                                        Math.Max(0,
+                                            tier2MaxConcurrentCount - QueueManager.Tier2Semaphore.CurrentCount) *
+                                        MetadataApi.RequestIntervalMs), cancellationToken)
+                                .ConfigureAwait(false);
+
                             if (cancellationToken.IsCancellationRequested)
                             {
                                 _logger.Info("RefreshPerson - Scheduled Task Cancelled");
@@ -186,7 +203,7 @@ namespace StrmAssistant.ScheduledTask
 
                             var refreshOptions = Plugin.MetadataApi.GetMetadataFullRefreshOptions();
 
-                            if (!nameRefreshSkip)
+                            if (!metadataRefreshSkip)
                             {
                                 var result = await Plugin.MetadataApi
                                     .GetPersonMetadataFromMovieDb(taskItem, serverPreferredMetadataLanguage,
@@ -195,13 +212,13 @@ namespace StrmAssistant.ScheduledTask
                                 if (result?.Item != null)
                                 {
                                     var newName = result.Item.Name;
-                                    if (!string.IsNullOrEmpty(newName))
+                                    if (!taskItem.IsFieldLocked(MetadataFields.Name) && !string.IsNullOrEmpty(newName))
                                     {
                                         taskItem.Name = Plugin.MetadataApi.ProcessPersonInfo(newName, true);
                                     }
 
                                     var newOverview = result.Item.Overview;
-                                    if (!string.IsNullOrEmpty(newOverview))
+                                    if (!taskItem.IsFieldLocked(MetadataFields.Overview) && !string.IsNullOrEmpty(newOverview))
                                     {
                                         taskItem.Overview = Plugin.MetadataApi.ProcessPersonInfo(newOverview, false);
                                     }
