@@ -138,6 +138,7 @@ namespace StrmAssistant.Common
                 }
             }
 
+            // 尝试修改LibraryMonitor以忽略.json文件（这个失败不影响MediaInfoApi的核心功能）
             try
             {
                 var embyServerImplementationsAssembly = Assembly.Load("Emby.Server.Implementations");
@@ -150,17 +151,22 @@ namespace StrmAssistant.Common
                 Array.Copy(currentArray, newArray, currentArray.Length);
                 newArray[newArray.Length - 1] = ".json";
                 alwaysIgnoreExtensions.SetValue(libraryMonitor, newArray);
+                
+                if (Plugin.Instance.DebugMode)
+                {
+                    _logger.Debug("LibraryMonitor .json ignore extension added successfully");
+                }
             }
             catch (Exception e)
             {
+                // LibraryMonitor修改失败不影响MediaInfoApi的核心功能，只记录警告
+                _logger.Warn($"{nameof(MediaInfoApi)} - Failed to modify LibraryMonitor (json file ignore). This is non-critical.");
                 if (Plugin.Instance.DebugMode)
                 {
-                    _logger.Debug(e.Message);
+                    _logger.Debug($"LibraryMonitor modification error: {e.Message}");
                     _logger.Debug(e.StackTrace);
                 }
-
-                _logger.Warn($"{PatchTracker.PatchType.Name} Init Failed");
-                PatchTracker.FallbackPatchApproach = PatchApproach.None;
+                // 不修改FallbackPatchApproach，保持之前设置的状态（Reflection或Harmony）
             }
         }
 
