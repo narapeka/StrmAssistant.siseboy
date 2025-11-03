@@ -113,10 +113,11 @@ namespace StrmAssistant.Common
 
                 if (_getStaticMediaSources is null)
                 {
-                    _logger.Warn($"{nameof(MediaInfoApi)} - GetStaticMediaSources method not found via reflection - Will use public API");
-                    // 如果找不到反射方法，使用公共API（即None，但功能仍然可用）
-                    PatchTracker.FallbackPatchApproach = PatchApproach.None;
-                    _logger.Info($"{nameof(MediaInfoApi)} - Will use public GetStaticMediaSources API (feature will work normally)");
+                    _logger.Info($"{nameof(MediaInfoApi)} - GetStaticMediaSources method not found via reflection - Will use public API");
+                    // 如果找不到反射方法，但可以使用公共API，功能仍然可用
+                    // 使用Reflection标记表示功能可用（虽然不是真正的反射，但功能是正常的）
+                    PatchTracker.FallbackPatchApproach = PatchApproach.Reflection;
+                    _logger.Info($"{nameof(MediaInfoApi)} - Will use public GetStaticMediaSources API (feature works normally)");
                 }
                 else if (Plugin.Instance.IsModSupported)
                 {

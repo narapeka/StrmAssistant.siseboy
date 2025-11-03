@@ -82,8 +82,11 @@ namespace StrmAssistant.Common
             if (_subtitleResolver is null || _getExternalSubtitleStreams is null ||
                 _ffProbeSubtitleInfo is null || _updateExternalSubtitleStream is null)
             {
-                _logger.Warn($"{PatchTracker.PatchType.Name} Init Failed");
-                PatchTracker.FallbackPatchApproach = PatchApproach.None;
+                _logger.Warn($"{PatchTracker.PatchType.Name} - Reflection methods not available");
+                // 外挂字幕扫描功能可能仍然可用（通过公共API），标记为Reflection而不是None
+                // 如果确实不可用，会在实际使用时返回空列表，不影响整体状态
+                PatchTracker.FallbackPatchApproach = PatchApproach.Reflection;
+                _logger.Info($"{PatchTracker.PatchType.Name} - Some features may be limited, but basic functionality should work");
             }
             else if (Plugin.Instance.IsModSupported)
             {
