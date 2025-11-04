@@ -72,9 +72,55 @@ namespace StrmAssistant.Common
                         {
                             localizationManager, fileSystem, libraryManager
                         });
-                        _getExternalSubtitleStreams = subtitleResolverType.GetMethod("GetExternalSubtitleStreams");
                         
-                        if (Plugin.Instance.DebugMode && _getExternalSubtitleStreams != null)
+                        // 尝试查找字幕相关方法，可能有多个重载或不同名称
+                        // Emby 4.8.x-4.9.0.x: GetExternalSubtitleStreams
+                        // Emby 4.9.1.x+: GetExternalTracks
+                        var methods = subtitleResolverType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                            .Where(m => m.Name == "GetExternalSubtitleStreams" || 
+                                       m.Name == "GetExternalStreams" || 
+                                       m.Name == "GetExternalTracks")
+                            .ToArray();
+                        
+                        if (methods.Length > 0)
+                        {
+                            // 优先选择参数最多的版本（通常是最新的）
+                            _getExternalSubtitleStreams = methods.OrderByDescending(m => m.GetParameters().Length).First();
+                            
+                            var paramCount = _getExternalSubtitleStreams.GetParameters().Length;
+                            var paramTypes = string.Join(", ", _getExternalSubtitleStreams.GetParameters().Select(p => p.ParameterType.Name));
+                            _logger.Info($"{nameof(SubtitleApi)}: Found {_getExternalSubtitleStreams.Name} with {paramCount} parameters: {paramTypes}");
+                        }
+                        else
+                        {
+                            // 尝试查找所有可能相关的方法
+                            var allMethods = subtitleResolverType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                                .Where(m => m.Name.Contains("Subtitle") || m.Name.Contains("External") || m.Name.Contains("Stream"))
+                                .Select(m => {
+                                    var parameters = m.GetParameters();
+                                    var paramStr = string.Join(", ", parameters.Select(p => p.ParameterType.Name));
+                                    return $"{m.Name}({paramStr})";
+                                })
+                                .ToArray();
+                            
+                            // 总是输出可用方法以便调试
+                            if (allMethods.Length > 0)
+                            {
+                                _logger.Info($"{nameof(SubtitleApi)}: Available methods in SubtitleResolver:");
+                                foreach (var method in allMethods)
+                                {
+                                    _logger.Info($"  - {method}");
+                                }
+                            }
+                            else
+                            {
+                                _logger.Warn($"{nameof(SubtitleApi)}: No subtitle-related methods found in SubtitleResolver");
+                            }
+                            
+                            _logger.Warn($"{nameof(SubtitleApi)}: Emby's internal GetExternalSubtitleStreams method not found in SubtitleResolver - external subtitle scanning may be limited");
+                        }
+                        
+                        if (Plugin.Instance.DebugMode && _subtitleResolver != null)
                         {
                             _logger.Debug($"{nameof(SubtitleApi)}: SubtitleResolver initialized successfully");
                         }
@@ -118,9 +164,9 @@ namespace StrmAssistant.Common
                 
                 // 检查哪些组件不可用
                 if (_subtitleResolver == null) _logger.Warn("  - SubtitleResolver not initialized");
-                if (_getExternalSubtitleStreams == null) _logger.Warn("  - GetExternalSubtitleStreams method not found");
+                if (_getExternalSubtitleStreams == null) _logger.Warn("  - Emby's SubtitleResolver.GetExternalSubtitleStreams method not found");
                 if (_ffProbeSubtitleInfo == null) _logger.Warn("  - FFProbeSubtitleInfo not initialized");
-                if (_updateExternalSubtitleStream == null) _logger.Warn("  - UpdateExternalSubtitleStream method not found");
+                if (_updateExternalSubtitleStream == null) _logger.Warn("  - FFProbeSubtitleInfo.UpdateExternalSubtitleStream method not found");
                 
                 // 外挂字幕扫描功能可能仍然可用（通过公共API或部分功能），标记为Reflection而不是None
                 PatchTracker.FallbackPatchApproach = PatchApproach.Reflection;
@@ -197,8 +243,23 @@ namespace StrmAssistant.Common
                     
                     try
                     {
-                        var result = _getExternalSubtitleStreams.Invoke(_subtitleResolver,
-                            new object[] { item, startIndex, directoryService, namingOptions, clearCache });
+                        // 根据方法参数数量动态构造参数
+                        var paramCount = _getExternalSubtitleStreams.GetParameters().Length;
+                        object[] args;
+                        
+                        if (paramCount == 6)
+                        {
+                            // Emby 4.9.1.x+: GetExternalTracks(BaseItem, Int32, IDirectoryService, LibraryOptions, NamingOptions, Boolean)
+                            var libraryOptions = _libraryManager.GetLibraryOptions(item);
+                            args = new object[] { item, startIndex, directoryService, libraryOptions, namingOptions, clearCache };
+                        }
+                        else
+                        {
+                            // Emby 4.8.x-4.9.0.x: GetExternalSubtitleStreams(BaseItem, Int32, IDirectoryService, NamingOptions, Boolean)
+                            args = new object[] { item, startIndex, directoryService, namingOptions, clearCache };
+                        }
+                        
+                        var result = _getExternalSubtitleStreams.Invoke(_subtitleResolver, args);
                         return result as List<MediaStream> ?? new List<MediaStream>();
                     }
                     catch (TargetInvocationException tie)

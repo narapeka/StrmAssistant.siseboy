@@ -12,6 +12,7 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Serialization;
+using StrmAssistant.Common;
 using StrmAssistant.Mod;
 using StrmAssistant.Options;
 using StrmAssistant.Properties;
@@ -86,19 +87,34 @@ namespace StrmAssistant.Common
                             jsonSerializer, serverApplicationHost
                         });
                         
-                        _createTitleFingerprint = audioFingerprintManager.GetMethod("CreateTitleFingerprint",
-                            BindingFlags.Public | BindingFlags.Instance, null,
-                            new[]
-                            {
-                                typeof(Episode), typeof(LibraryOptions), typeof(IDirectoryService),
-                                typeof(CancellationToken)
-                            }, null);
+                        // 尝试查找 CreateTitleFingerprint，可能有不同的参数签名
+                        _createTitleFingerprint = EmbyVersionCompatibility.FindCompatibleMethod(
+                            audioFingerprintManager,
+                            "CreateTitleFingerprint",
+                            BindingFlags.Public | BindingFlags.Instance,
+                            new[] { typeof(Episode), typeof(LibraryOptions), typeof(IDirectoryService), typeof(CancellationToken) },
+                            new[] { typeof(Episode), typeof(IDirectoryService), typeof(CancellationToken) },
+                            new[] { typeof(Episode), typeof(CancellationToken) }
+                        );
                         
                         _getAllFingerprintFilesForSeason = audioFingerprintManager.GetMethod("GetAllFingerprintFilesForSeason",
                             BindingFlags.Public | BindingFlags.Instance);
                         
-                        _updateSequencesForSeason = audioFingerprintManager.GetMethod("UpdateSequencesForSeason",
-                            BindingFlags.Public | BindingFlags.Instance);
+                        // 尝试查找 UpdateSequencesForSeason，可能有不同的参数签名
+                        var updateMethods = audioFingerprintManager.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                            .Where(m => m.Name == "UpdateSequencesForSeason")
+                            .ToArray();
+                        
+                        if (updateMethods.Length > 0)
+                        {
+                            _updateSequencesForSeason = updateMethods.OrderByDescending(m => m.GetParameters().Length).First();
+                            
+                            if (Plugin.Instance.DebugMode)
+                            {
+                                var paramCount = _updateSequencesForSeason.GetParameters().Length;
+                                _logger.Debug($"{nameof(FingerprintApi)}: Found UpdateSequencesForSeason with {paramCount} parameters");
+                            }
+                        }
                         
                         _timeoutMs = audioFingerprintManager.GetField("TimeoutMs",
                             BindingFlags.NonPublic | BindingFlags.Instance);

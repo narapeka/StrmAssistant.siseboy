@@ -215,13 +215,16 @@ namespace StrmAssistant.Mod
             Traverse.Create(target).Property(propertyName).SetValue(value);
         }
 
-        public static bool ReversePatch(PatchTracker tracker, MethodBase targetMethod, string stub)
+        public static bool ReversePatch(PatchTracker tracker, MethodBase targetMethod, string stub, bool suppressWarnings = false)
         {
             if (tracker.FallbackPatchApproach != PatchApproach.Harmony) return false;
 
             if (targetMethod is null)
             {
-                Plugin.Instance.Logger.Warn($"{tracker.PatchType.Name} ReversePatch Failed: Target method is null");
+                if (!suppressWarnings)
+                {
+                    Plugin.Instance.Logger.Warn($"{tracker.PatchType.Name} ReversePatch Failed: Target method is null");
+                }
                 tracker.FallbackPatchApproach = PatchApproach.None;
                 return false;
             }
@@ -230,7 +233,10 @@ namespace StrmAssistant.Mod
 
             if (stubMethod == null)
             {
-                Plugin.Instance.Logger.Warn($"{tracker.PatchType.Name} ReversePatch Failed: Stub method '{stub}' not found");
+                if (!suppressWarnings)
+                {
+                    Plugin.Instance.Logger.Warn($"{tracker.PatchType.Name} ReversePatch Failed: Stub method '{stub}' not found");
+                }
                 tracker.FallbackPatchApproach = PatchApproach.Reflection;
                 return false;
             }
@@ -239,7 +245,9 @@ namespace StrmAssistant.Mod
             {
                 var methodName = targetMethod.DeclaringType != null ? $"{targetMethod.DeclaringType.Name}.{targetMethod.Name}" : targetMethod.Name;
                 
-                HarmonyMod.CreateReversePatcher(targetMethod, stubMethod).Patch();
+                // 尝试创建ReversePatcher并应用补丁
+                var reversePatcher = HarmonyMod.CreateReversePatcher(targetMethod, stubMethod);
+                reversePatcher.Patch();
 
                 if (Plugin.Instance.DebugMode)
                 {

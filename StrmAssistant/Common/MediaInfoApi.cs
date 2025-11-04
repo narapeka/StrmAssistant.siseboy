@@ -118,17 +118,26 @@ namespace StrmAssistant.Common
                 }
                 else if (Plugin.Instance.IsModSupported)
                 {
+                    // 尝试ReversePatch，但即使失败也不会影响功能
                     var reversePatchSuccess = PatchManager.ReversePatch(PatchTracker, _getStaticMediaSources,
-                        nameof(GetStaticMediaSourcesStub));
+                        nameof(GetStaticMediaSourcesStub), suppressWarnings: false);
                     
                     if (!reversePatchSuccess && PatchTracker.FallbackPatchApproach == PatchApproach.Reflection)
                     {
-                        // ReversePatch失败但可以使用Reflection，这是正常的
-                        _logger.Info($"{nameof(MediaInfoApi)} - Reflection approach active (optimal performance)");
+                        // ReversePatch失败但可以使用Reflection，这是完全正常的
+                        _logger.Info($"{nameof(MediaInfoApi)} - Using optimized Reflection (performance: excellent)");
+                        EmbyVersionCompatibility.LogCompatibilityInfo(
+                            nameof(MediaInfoApi),
+                            true,
+                            "Reflection mode with direct method invoke - performance optimized");
                     }
                     else if (reversePatchSuccess)
                     {
-                        _logger.Info($"{nameof(MediaInfoApi)} - Harmony ReversePatch active (best performance)");
+                        _logger.Info($"{nameof(MediaInfoApi)} - Harmony ReversePatch active (performance: optimal)");
+                        EmbyVersionCompatibility.LogCompatibilityInfo(
+                            nameof(MediaInfoApi),
+                            true,
+                            "Harmony ReversePatch - best performance");
                     }
                 }
                 else

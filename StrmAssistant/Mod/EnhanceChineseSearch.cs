@@ -88,8 +88,27 @@ namespace StrmAssistant.Mod
                     var baseSqliteRepository = EmbyVersionCompatibility.TryGetType(embySqlite, "Emby.Sqlite.BaseSqliteRepository");
                     if (baseSqliteRepository != null)
                     {
-                        _createConnection = baseSqliteRepository.GetMethod("CreateConnection",
-                            BindingFlags.NonPublic | BindingFlags.Instance);
+                        // 尝试获取 CreateConnection 方法，处理可能的重载
+                        var createConnectionMethods = baseSqliteRepository.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+                            .Where(m => m.Name == "CreateConnection")
+                            .ToArray();
+                        
+                        if (createConnectionMethods.Length == 1)
+                        {
+                            _createConnection = createConnectionMethods[0];
+                        }
+                        else if (createConnectionMethods.Length > 1)
+                        {
+                            // 如果有多个重载，选择无参数的版本
+                            _createConnection = createConnectionMethods.FirstOrDefault(m => m.GetParameters().Length == 0)
+                                ?? createConnectionMethods.FirstOrDefault(m => m.GetParameters().Length == 1);
+                            
+                            if (Plugin.Instance.DebugMode && _createConnection != null)
+                            {
+                                Plugin.Instance.Logger.Debug($"EnhanceChineseSearch: Selected CreateConnection with {_createConnection.GetParameters().Length} parameters");
+                            }
+                        }
+                        
                         _dbFilePath = baseSqliteRepository.GetProperty("DbFilePath", 
                             BindingFlags.NonPublic | BindingFlags.Instance);
                     }
@@ -105,8 +124,27 @@ namespace StrmAssistant.Mod
                     
                     if (sqliteItemRepository != null)
                     {
-                        _getJoinCommandText = sqliteItemRepository.GetMethod("GetJoinCommandText",
-                            BindingFlags.NonPublic | BindingFlags.Instance);
+                        // 处理 GetJoinCommandText 可能的重载
+                        var getJoinCommandTextMethods = sqliteItemRepository.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+                            .Where(m => m.Name == "GetJoinCommandText")
+                            .ToArray();
+                        
+                        if (getJoinCommandTextMethods.Length == 1)
+                        {
+                            _getJoinCommandText = getJoinCommandTextMethods[0];
+                        }
+                        else if (getJoinCommandTextMethods.Length > 1)
+                        {
+                            // 选择参数最多的版本（通常是最新的）
+                            _getJoinCommandText = getJoinCommandTextMethods.OrderByDescending(m => m.GetParameters().Length).First();
+                            
+                            if (Plugin.Instance.DebugMode)
+                            {
+                                var paramCount = _getJoinCommandText.GetParameters().Length;
+                                Plugin.Instance.Logger.Debug($"EnhanceChineseSearch: Selected GetJoinCommandText with {paramCount} parameters");
+                            }
+                        }
+                        
                         _createSearchTerm = sqliteItemRepository.GetMethod("CreateSearchTerm", 
                             BindingFlags.NonPublic | BindingFlags.Static);
                         _cacheIdsFromTextParams = sqliteItemRepository.GetMethod("CacheIdsFromTextParams",
@@ -128,7 +166,11 @@ namespace StrmAssistant.Mod
                 if (missingComponents.Any())
                 {
                     Plugin.Instance.Logger.Warn($"EnhanceChineseSearch: Missing components - {string.Join(", ", missingComponents)}");
-                    Plugin.Instance.Logger.Warn("Chinese search enhancement may not work on this Emby version");
+                    Plugin.Instance.Logger.Warn($"Chinese search enhancement may not work on Emby {AppVer}");
+                    Plugin.Instance.Logger.Info("This feature requires internal SQLite APIs that may have changed in this Emby version");
+                    
+                    // 标记为不可用
+                    PatchTracker.FallbackPatchApproach = PatchApproach.None;
                     
                     EmbyVersionCompatibility.LogCompatibilityInfo(
                         nameof(EnhanceChineseSearch),
@@ -138,6 +180,7 @@ namespace StrmAssistant.Mod
                 else
                 {
                     Plugin.Instance.Logger.Info("EnhanceChineseSearch: All components loaded successfully");
+                    Plugin.Instance.Logger.Info($"Chinese search enhancement is compatible with Emby {AppVer}");
                     
                     EmbyVersionCompatibility.LogCompatibilityInfo(
                         nameof(EnhanceChineseSearch),

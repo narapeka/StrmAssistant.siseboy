@@ -74,12 +74,23 @@ namespace StrmAssistant.Common
                             applicationPaths, libraryMonitor, ffmpegManager
                         });
                         
-                        _refreshThumbnailImages = thumbnailGenerator.GetMethod("RefreshThumbnailImages",
-                            BindingFlags.Public | BindingFlags.Instance);
+                        // 查找 RefreshThumbnailImages 方法，可能有多个重载
+                        var refreshMethods = thumbnailGenerator.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                            .Where(m => m.Name == "RefreshThumbnailImages")
+                            .ToArray();
                         
-                        if (Plugin.Instance.DebugMode && _refreshThumbnailImages != null)
+                        if (refreshMethods.Length > 0)
                         {
-                            _logger.Debug($"{nameof(VideoThumbnailApi)}: RefreshThumbnailImages method found");
+                            // 优先选择参数最多的版本
+                            _refreshThumbnailImages = refreshMethods.OrderByDescending(m => m.GetParameters().Length).First();
+                            
+                            var paramCount = _refreshThumbnailImages.GetParameters().Length;
+                            var paramTypes = string.Join(", ", _refreshThumbnailImages.GetParameters().Select(p => p.ParameterType.Name));
+                            _logger.Info($"{nameof(VideoThumbnailApi)}: Found RefreshThumbnailImages with {paramCount} parameters: {paramTypes}");
+                        }
+                        else
+                        {
+                            _logger.Warn($"{nameof(VideoThumbnailApi)}: RefreshThumbnailImages method not found");
                         }
                     }
                 }
@@ -112,12 +123,28 @@ namespace StrmAssistant.Common
             }
             else if (Plugin.Instance.IsModSupported)
             {
-                var stubName = AppVer >= Ver4936 ? nameof(RefreshThumbnailImagesStub49) : nameof(RefreshThumbnailImagesStub48);
+                // 根据参数数量选择合适的stub
+                string stubName;
+                var paramCount = _refreshThumbnailImages?.GetParameters().Length ?? 0;
+                
+                if (paramCount == 10)
+                {
+                    stubName = nameof(RefreshThumbnailImagesStub491); // Emby 4.9.1.x+
+                }
+                else if (paramCount == 9 || AppVer >= Ver4936)
+                {
+                    stubName = nameof(RefreshThumbnailImagesStub49); // Emby 4.9.0.36+
+                }
+                else
+                {
+                    stubName = nameof(RefreshThumbnailImagesStub48); // Emby 4.8.x
+                }
+                
                 var patchSuccess = PatchManager.ReversePatch(PatchTracker, _refreshThumbnailImages, stubName);
                 
                 if (patchSuccess && PatchTracker.FallbackPatchApproach == PatchApproach.Harmony)
                 {
-                    _logger.Info($"{nameof(VideoThumbnailApi)} - Harmony patch applied (version {(AppVer >= Ver4936 ? "4.9.0.36+" : "4.8.x")})");
+                    _logger.Info($"{nameof(VideoThumbnailApi)} - Harmony patch applied (stub: {stubName}, params: {paramCount})");
                 }
                 
                 EmbyVersionCompatibility.LogCompatibilityInfo(
@@ -136,6 +163,13 @@ namespace StrmAssistant.Common
         }
 
 #pragma warning disable CS1998
+        [HarmonyReversePatch]
+        private static async Task<bool> RefreshThumbnailImagesStub491(object instance, Video item,
+            MediaSourceInfo mediaSource, MediaStream videoStream, LibraryOptions libraryOptions,
+            IDirectoryService directoryService, List<ChapterInfo> chapters, bool extractImages, bool saveChapters,
+            bool forceRefresh, CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
         [HarmonyReversePatch]
         private static async Task<bool> RefreshThumbnailImagesStub49(object instance, Video item,
             MediaSourceInfo mediaSource, MediaStream videoStream, LibraryOptions libraryOptions,
@@ -157,17 +191,32 @@ namespace StrmAssistant.Common
             var mediaSource = AppVer >= Ver4936
                 ? item.GetMediaSources(false, false, libraryOptions).FirstOrDefault()
                 : null;
+            
+            var paramCount = _refreshThumbnailImages?.GetParameters().Length ?? 0;
 
             switch (PatchTracker.FallbackPatchApproach)
             {
                 case PatchApproach.Harmony:
                     try
                     {
-                        return AppVer >= Ver4936
-                            ? RefreshThumbnailImagesStub49(_thumbnailGenerator, item, mediaSource, null, libraryOptions,
-                                directoryService, chapters, extractImages, saveChapters, cancellationToken)
-                            : RefreshThumbnailImagesStub48(_thumbnailGenerator, item, null, libraryOptions,
+                        if (paramCount == 10)
+                        {
+                            // Emby 4.9.1.x+: 10 参数版本
+                            return RefreshThumbnailImagesStub491(_thumbnailGenerator, item, mediaSource, null, libraryOptions,
+                                directoryService, chapters, extractImages, saveChapters, false, cancellationToken);
+                        }
+                        else if (paramCount == 9 || AppVer >= Ver4936)
+                        {
+                            // Emby 4.9.0.36+: 9 参数版本
+                            return RefreshThumbnailImagesStub49(_thumbnailGenerator, item, mediaSource, null, libraryOptions,
                                 directoryService, chapters, extractImages, saveChapters, cancellationToken);
+                        }
+                        else
+                        {
+                            // Emby 4.8.x: 8 参数版本
+                            return RefreshThumbnailImagesStub48(_thumbnailGenerator, item, null, libraryOptions,
+                                directoryService, chapters, extractImages, saveChapters, cancellationToken);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -190,17 +239,36 @@ namespace StrmAssistant.Common
                     
                     try
                     {
-                        var parameters = AppVer >= Ver4936
-                            ? new object[]
+                        // 根据参数数量动态构造参数
+                        object[] parameters;
+                        
+                        if (paramCount == 10)
+                        {
+                            // Emby 4.9.1.x+: (Video, MediaSourceInfo, MediaStream, LibraryOptions, IDirectoryService, List<ChapterInfo>, bool, bool, bool, CancellationToken)
+                            parameters = new object[]
+                            {
+                                item, mediaSource, null, libraryOptions, directoryService, chapters, extractImages,
+                                saveChapters, false, cancellationToken
+                            };
+                        }
+                        else if (paramCount == 9 || AppVer >= Ver4936)
+                        {
+                            // Emby 4.9.0.36+: (Video, MediaSourceInfo, MediaStream, LibraryOptions, IDirectoryService, List<ChapterInfo>, bool, bool, CancellationToken)
+                            parameters = new object[]
                             {
                                 item, mediaSource, null, libraryOptions, directoryService, chapters, extractImages,
                                 saveChapters, cancellationToken
-                            }
-                            : new object[]
+                            };
+                        }
+                        else
+                        {
+                            // Emby 4.8.x: (Video, MediaStream, LibraryOptions, IDirectoryService, List<ChapterInfo>, bool, bool, CancellationToken)
+                            parameters = new object[]
                             {
                                 item, null, libraryOptions, directoryService, chapters, extractImages, saveChapters,
                                 cancellationToken
                             };
+                        }
 
                         var result = _refreshThumbnailImages.Invoke(_thumbnailGenerator, parameters);
                         return result as Task<bool> ?? Task.FromResult(false);
