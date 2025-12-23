@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Configuration;
 using System;
 using System.IO;
 using System.Linq;
@@ -159,10 +159,20 @@ setTimeout(() => {
             var dataExplorer2Assembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(a => a.GetName().Name == "Emby.DataExplorer2");
 
-            ModifiedShortcutsString = File.ReadAllText(Path.Combine(dashboardSourcePath, "modules", "shortcuts.js")) +
-                                      injectShortcutCommand;
+            var shortcutsPath = Path.Combine(dashboardSourcePath, "modules", "shortcuts.js");
+            if (File.Exists(shortcutsPath))
+            {
+                ModifiedShortcutsString = File.ReadAllText(shortcutsPath) + injectShortcutCommand;
+            }
+            else
+            {
+                Plugin.Instance.Logger.Error($"shortcuts.js not found at {shortcutsPath}");
+                // 如果找不到原始文件，我们不能只是注入我们的代码，因为那会丢失原始功能。
+                // 但为了避免服务崩溃，我们保持 ModifiedShortcutsString 为 null。
+                // Service 层会处理 null 并返回空响应。
+            }
 
-            if (dataExplorer2Assembly != null)
+            if (dataExplorer2Assembly != null && !string.IsNullOrEmpty(ModifiedShortcutsString))
             {
                 if (Plugin.Instance.DebugMode)
                 {

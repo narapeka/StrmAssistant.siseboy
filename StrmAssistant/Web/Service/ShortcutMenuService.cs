@@ -20,13 +20,25 @@ namespace StrmAssistant.Web.Service
 
         public object Get(GetStrmAssistantJs request)
         {
+            var stream = ShortcutMenuHelper.StrmAssistantJs;
+            if (stream == null)
+            {
+                 return _resultFactory.GetResult(ReadOnlySpan<char>.Empty, "application/x-javascript");
+            }
             return _resultFactory.GetResult(Request,
-                (ReadOnlyMemory<byte>)ShortcutMenuHelper.StrmAssistantJs.GetBuffer(), "application/x-javascript");
+                (ReadOnlyMemory<byte>)stream.GetBuffer(), "application/x-javascript");
         }
 
         public object Get(GetShortcutMenu request)
         {
-            return _resultFactory.GetResult(ShortcutMenuHelper.ModifiedShortcutsString.AsSpan(),
+            var content = ShortcutMenuHelper.ModifiedShortcutsString;
+            if (string.IsNullOrEmpty(content))
+            {
+                // 如果初始化失败，返回空内容以避免 500 错误
+                return _resultFactory.GetResult(ReadOnlySpan<char>.Empty, "application/x-javascript");
+            }
+
+            return _resultFactory.GetResult(content.AsSpan(),
                 "application/x-javascript");
         }
     }
