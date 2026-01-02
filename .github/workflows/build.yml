@@ -44,7 +44,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StrmAssistant-Linux-ARM64-${{ github.run_number }}
-          # Path uses backslashes because we are on a Windows runner
-          path: StrmAssistant\bin\Release\net6.0\linux-arm64\StrmAssistant.dll
+          name: StrmAssistant-Linux-ARM64-Full-${{ github.run_number }}
+          # Use * to catch the DLL AND any dependencies that didn't get embedded
+          path: StrmAssistant\bin\Release\net6.0\linux-arm64\*
           retention-days: 30
