@@ -1,24 +1,24 @@
-name: Build Plugin
+name: Build Plugin Linux ARM64
 
 on:
-  workflow_dispatch:  # 仅允许手动触发
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # 只获取最新提交，加快克隆速度
+          fetch-depth: 1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.x'
 
-      # 缓存NuGet包，大幅提升构建速度
+      # Cache NuGet packages for faster subsequent builds
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -28,15 +28,24 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        run: dotnet restore StrmAssistant/StrmAssistant.csproj
+        # Specifies the Linux ARM64 runtime for restoration
+        run: dotnet restore StrmAssistant/StrmAssistant.csproj -r linux-arm64
 
       - name: Build the project
-        run: dotnet build StrmAssistant/StrmAssistant.csproj --no-restore --configuration Release -p:UseSharedCompilation=false
+        # -r linux-arm64: Targets OECT/Linux ARM architecture
+        # --no-self-contained: Keeps the DLL small (Emby provides the runtime)
+        run: |
+          dotnet build StrmAssistant/StrmAssistant.csproj \
+            --configuration Release \
+            -r linux-arm64 \
+            --no-restore \
+            --no-self-contained \
+            -p:UseSharedCompilation=false
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StrmAssistantLite-${{ github.run_number }}
-          path: C:\Users\runneradmin\AppData\Roaming\Emby-Server\programdata\plugins\*
-          compression-level: 0  # DLL已经是二进制，不需要压缩
+          name: StrmAssistant-Linux-ARM64-${{ github.run_number }}
+          # Path adjusted to the standard .NET build output for Linux ARM64
+          path: StrmAssistant/bin/Release/net6.0/linux-arm64/StrmAssistant.dll
           retention-days: 30
