@@ -1,11 +1,12 @@
 name: Build Plugin Linux ARM64
 
 on:
-  workflow_dispatch:  # Manual trigger only
+  workflow_dispatch: 
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Switching back to Windows to satisfy the ResourceEmbedder package requirements
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -18,7 +19,6 @@ jobs:
         with:
           dotnet-version: '6.x'
 
-      # Cache NuGet packages for faster subsequent builds
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -28,24 +28,23 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        # Specifies the Linux ARM64 runtime for restoration
+        # We still tell .NET we are targeting Linux ARM64
         run: dotnet restore StrmAssistant/StrmAssistant.csproj -r linux-arm64
 
       - name: Build the project
-        # -r linux-arm64: Targets OECT/Linux ARM architecture
-        # --no-self-contained: Keeps the DLL small (Emby provides the runtime)
+        # This command creates the Linux binary even though it's running on Windows
         run: |
-          dotnet build StrmAssistant/StrmAssistant.csproj \
-            --configuration Release \
-            -r linux-arm64 \
-            --no-restore \
-            --no-self-contained \
+          dotnet build StrmAssistant/StrmAssistant.csproj `
+            --configuration Release `
+            -r linux-arm64 `
+            --no-restore `
+            --no-self-contained `
             -p:UseSharedCompilation=false
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: StrmAssistant-Linux-ARM64-${{ github.run_number }}
-          # Path adjusted to the standard .NET build output for Linux ARM64
-          path: StrmAssistant/bin/Release/net6.0/linux-arm64/StrmAssistant.dll
+          # Path uses backslashes because we are on a Windows runner
+          path: StrmAssistant\bin\Release\net6.0\linux-arm64\StrmAssistant.dll
           retention-days: 30
