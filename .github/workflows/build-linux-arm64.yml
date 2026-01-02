@@ -115,7 +115,7 @@ jobs:
           } else {
             Write-Host "Error: Merged DLL was not created"
             exit 1
-          fi
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
