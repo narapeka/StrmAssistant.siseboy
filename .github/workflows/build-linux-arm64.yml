@@ -30,9 +30,30 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore StrmAssistant/StrmAssistant.csproj -p:RuntimeIdentifier=linux-arm64
 
+      - name: Fix Resource.Embedder path issue
+        run: |
+          # Resource.Embedder has a bug where it constructs paths incorrectly on Linux
+          # Find the actual ResourceEmbedder.Core.dll location
+          ACTUAL_DLL=$(find ~/.nuget/packages -path "*/resource.embedder/*/tasks/netstandard2.0/ResourceEmbedder.Core.dll" 2>/dev/null | head -n 1)
+          
+          if [ -n "$ACTUAL_DLL" ] && [ -f "$ACTUAL_DLL" ]; then
+            echo "Found ResourceEmbedder.Core.dll at: $ACTUAL_DLL"
+            # The error shows it's looking for: project_dir/home\runner\.nuget\packages\...
+            # Create the expected directory structure as a workaround
+            PROJECT_DIR="$PWD/StrmAssistant"
+            EXPECTED_DIR="$PROJECT_DIR/home/runner/.nuget/packages/resource.embedder/2.2.0/tasks/netstandard2.0"
+            mkdir -p "$EXPECTED_DIR"
+            # Copy the DLL to where Resource.Embedder expects it
+            cp "$ACTUAL_DLL" "$EXPECTED_DIR/ResourceEmbedder.Core.dll"
+            echo "Created workaround path: $EXPECTED_DIR/ResourceEmbedder.Core.dll"
+          else
+            echo "Warning: Could not find ResourceEmbedder.Core.dll"
+          fi
+
       - name: Build the project for Linux ARM64
         run: dotnet build StrmAssistant/StrmAssistant.csproj --no-restore --configuration Release -p:UseSharedCompilation=false -p:RuntimeIdentifier=linux-arm64
-        # Note: PostBuild target may fail on Linux (Windows-specific paths), but the build will succeed and we'll merge DLLs manually in the next step
+        # Note: Resource.Embedder path issue is worked around by creating expected directory structure
+        # PostBuild target may fail on Linux (Windows-specific paths), but the build will succeed and we'll merge DLLs manually in the next step
 
       - name: Install Mono (for ILRepack)
         run: |
