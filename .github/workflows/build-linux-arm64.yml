@@ -28,7 +28,7 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        run: dotnet restore StrmAssistant/StrmAssistant.csproj
+        run: dotnet restore StrmAssistant/StrmAssistant.csproj -p:RuntimeIdentifier=linux-arm64
 
       - name: Build the project for Linux ARM64
         run: dotnet build StrmAssistant/StrmAssistant.csproj --no-restore --configuration Release -p:UseSharedCompilation=false -p:RuntimeIdentifier=linux-arm64
