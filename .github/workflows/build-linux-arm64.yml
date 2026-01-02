@@ -1,0 +1,129 @@
+name: Build Plugin (Linux ARM64)
+
+on:
+  workflow_dispatch:  # 仅允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # 只获取最新提交，加快克隆速度
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.x'
+
+      # 缓存NuGet包，大幅提升构建速度
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore StrmAssistant/StrmAssistant.csproj
+
+      - name: Build the project for Linux ARM64
+        run: dotnet build StrmAssistant/StrmAssistant.csproj --no-restore --configuration Release -p:UseSharedCompilation=false -p:RuntimeIdentifier=linux-arm64
+        # Note: PostBuild target may fail on Linux (Windows-specific paths), but the build will succeed and we'll merge DLLs manually in the next step
+
+      - name: Install Mono (for ILRepack)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-complete
+
+      - name: List all DLLs in output directory
+        run: |
+          TARGET_DIR="StrmAssistant/bin/Release/net6.0/linux-arm64"
+          echo "=== All DLLs in build output ==="
+          find "$TARGET_DIR" -name "*.dll" -type f | sort
+          echo ""
+          echo "=== DLLs that will be merged (matching Windows build) ==="
+          echo "- StrmAssistant.dll (main DLL)"
+          echo "- 0Harmony.dll (from Lib.Harmony package)"
+          echo "- ChineseConverter.dll (from CHTCHSConv package)"
+          echo "- TinyPinyin.dll (from TinyPinyin package)"
+          echo ""
+          echo "Note: Other DLLs (Emby framework, System.*, etc.) are not merged as they're provided by Emby server"
+
+      - name: Merge DLLs using ILRepack
+        run: |
+          # 查找ILRepack.exe
+          ILREPACK_EXE=$(find ~/.nuget/packages -path "*/ilrepack/*/tools/ILRepack.exe" | head -n 1)
+          
+          if [ -z "$ILREPACK_EXE" ] || [ ! -f "$ILREPACK_EXE" ]; then
+            echo "Error: ILRepack.exe not found in NuGet packages"
+            exit 1
+          fi
+          
+          echo "Found ILRepack at: $ILREPACK_EXE"
+          
+          # 创建输出目录
+          OUTPUT_DIR="$HOME/.config/emby-server/plugins"
+          mkdir -p "$OUTPUT_DIR"
+          
+          # 构建ILRepack命令 - 匹配Windows PostBuild配置
+          TARGET_DIR="StrmAssistant/bin/Release/net6.0/linux-arm64"
+          OUTPUT_FILE="$OUTPUT_DIR/StrmAssistant.dll"
+          
+          # 检查所有必需的DLL是否存在 (匹配Windows build的PostBuild目标)
+          MISSING_DLLS=()
+          if [ ! -f "$TARGET_DIR/StrmAssistant.dll" ]; then
+            MISSING_DLLS+=("StrmAssistant.dll")
+          fi
+          if [ ! -f "$TARGET_DIR/0Harmony.dll" ]; then
+            MISSING_DLLS+=("0Harmony.dll")
+          fi
+          if [ ! -f "$TARGET_DIR/ChineseConverter.dll" ]; then
+            MISSING_DLLS+=("ChineseConverter.dll")
+          fi
+          if [ ! -f "$TARGET_DIR/TinyPinyin.dll" ]; then
+            MISSING_DLLS+=("TinyPinyin.dll")
+          fi
+          
+          if [ ${#MISSING_DLLS[@]} -gt 0 ]; then
+            echo "Error: Required DLLs not found:"
+            for dll in "${MISSING_DLLS[@]}"; do
+              echo "  - $dll"
+            done
+            exit 1
+          fi
+          
+          echo "Merging DLLs (matching Windows PostBuild configuration)..."
+          # 运行ILRepack合并DLL - 完全匹配Windows .csproj中的PostBuild命令
+          mono "$ILREPACK_EXE" /out:"$OUTPUT_FILE" \
+            "$TARGET_DIR/StrmAssistant.dll" \
+            "$TARGET_DIR/0Harmony.dll" \
+            "$TARGET_DIR/ChineseConverter.dll" \
+            "$TARGET_DIR/TinyPinyin.dll" \
+            /lib:"$TARGET_DIR"
+          
+          # 验证输出文件
+          if [ -f "$OUTPUT_FILE" ]; then
+            echo "Successfully created merged DLL: $OUTPUT_FILE"
+            ls -lh "$OUTPUT_FILE"
+            echo ""
+            echo "Merged DLL includes:"
+            echo "  - StrmAssistant.dll (main)"
+            echo "  - 0Harmony.dll"
+            echo "  - ChineseConverter.dll"
+            echo "  - TinyPinyin.dll"
+          else
+            echo "Error: Merged DLL was not created"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StrmAssistant-linux-arm64-${{ github.run_number }}
+          path: ${{ runner.home }}/.config/emby-server/plugins/StrmAssistant.dll
+          compression-level: 0  # DLL已经是二进制，不需要压缩
+          retention-days: 30
